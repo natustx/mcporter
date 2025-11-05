@@ -8,7 +8,7 @@ _TypeScript runtime + CLI generator for the Model Context Protocol._
 - **Zero-config CLI** – `npx mcporter list` and `npx mcporter call` get you from install to tool execution quickly, with niceties such as `--tail-log`.
 - **Composable runtime API** – `createRuntime()` pools connections, handles retries, and exposes a typed interface for Bun/Node agents.
 - **OAuth support** – automatic browser launches, local callback server, and token persistence under `~/.mcporter/<server>/` (compatible with existing `token_cache_dir` overrides).
-- **Structured configuration** – reads `config/mcporter.json` (Cursor/Claude-compatible) and expands `${ENV}` placeholders, stdio wrappers, and headers in a predictable way.
+- **Structured configuration** – reads `config/mcporter.json`, automatically merges Cursor/Claude/Codex configs when present, and expands `${ENV}` placeholders, stdio wrappers, and headers in a predictable way.
 - **Integration-ready** – ships with unit and integration tests (including a streamable HTTP fixture) plus GitHub Actions CI, so changes remain trustworthy.
 
 ## Installation
@@ -98,41 +98,20 @@ To reset credentials, delete that directory and rerun the command—`mcporter` w
 
 `mcporter` can mint a fully standalone CLI for any server—handy when you want a single-purpose tool with friendly flags. You do **not** need an on-disk config; just pass an inline definition:
 
-```bash
-npx mcporter generate-cli \
-  --server '{
-    "name":"context7",
-    "command":"https://mcp.context7.com/mcp",
-    "headers":{
-      "Authorization":"Bearer ${CONTEXT7_API_KEY}"
-    }
-  }' \
-  --output generated/context7-cli.ts \
-  --minify
-
-# Run the generated TypeScript directly (Node)
-pnpm exec tsx generated/context7-cli.ts list-tools
-pnpm exec tsx generated/context7-cli.ts get-library-docs --library-name react
-```
-
-Want a single file you can ship to agents or drop on a PATH? Bundle it:
+Generate a single executable you can ship to agents or drop on a PATH:
 
 ```bash
-# Emit a Bun-friendly executable with embedded schema defaults
 npx mcporter generate-cli \
   --server '{"name":"context7","command":"https://mcp.context7.com/mcp"}' \
-  --output dist/context7.ts \
-  --runtime bun \
   --compile
-
-# Grant execute permission once, then run anywhere Bun is installed
-chmod +x dist/context7
-CONTEXT7_API_KEY=sk-... ./dist/context7 resolve-library-id react
-
-# The same command works with Node by omitting --runtime bun (bundles as CJS)
+chmod +x context7
+./context7 list-tools
+./context7 resolve-library-id react
 ```
 
-Generated CLIs embed the discovered schemas, so subsequent executions skip `listTools` round-trips and hit the network only for real tool calls. Use `--bundle` without a value to auto-name the output, and pass `--timeout` to raise the per-call default (30s). Add `--minify` to shrink bundled output. Compilation currently requires Bun; `--compile [path]` runs `bun build --compile` to emit a native executable, and when you omit the path the binary inherits the server name (`context7` in the example) so you can drop it straight onto your PATH.
+The command writes `context7.ts` alongside a compiled `context7` binary. Generated CLIs embed the discovered schemas, so subsequent executions skip `listTools` round-trips and hit the network only for real tool calls. Use `--bundle` without a value to auto-name the output, and pass `--timeout` to raise the per-call default (30s). Add `--minify` to shrink bundled output. Compilation currently requires Bun; `--compile [path]` runs `bun build --compile` to emit a native executable, and when you omit the path the binary inherits the server name (`context7` in the example) so you can drop it straight onto your PATH.
+
+> Tip: When Bun (or `BUN_BIN`) is available, `mcporter` defaults to `--runtime bun`; otherwise it falls back to Node. Pass `--runtime node` or `--runtime bun` to override explicitly.
 
 ## Composable Workflows
 

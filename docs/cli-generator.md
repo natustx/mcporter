@@ -1,14 +1,14 @@
 # CLI Generator Plan
 
-Default behavior: generating `generated/<server>-cli.ts` if no output path is provided. Bundling is opt-in via `--bundle` and produces a single JS file with shebang; otherwise we emit TypeScript targeting Node.js.
+Default behavior: generating `<server>.ts` in the working directory if no output path is provided. Bundling is opt-in via `--bundle` and produces a single JS file with shebang; otherwise we emit TypeScript targeting Node.js.
 
 ## Goal
 Create an `mcporter generate-cli` command that produces a standalone CLI for a single MCP server. The generated CLI should feel like a Unix tool: subcommands map to MCP tools, arguments translate to schema fields, and output can be piped/redirected easily.
 
 ## High-Level Requirements
 - **Input**: Identify the target server either by shorthand name or by providing an explicit MCP server definition.
-- **Output**: Emit a TypeScript file (ESM) targeting Node.js by default (`generated/<server>-cli.ts` unless `--output` overrides). Bundling to a standalone JS file happens only when `--bundle` is passed.
-- **Runtime Selection**: Node.js by default; allow `--runtime bun` to emit Bun-friendly entry points if requested.
+- **Output**: Emit a TypeScript file (ESM) targeting Node.js by default (`<server>.ts` unless `--output` overrides). Bundling to a standalone JS file happens only when `--bundle` is passed.
+- **Runtime Selection**: Prefer Bun when it is available (`bun --version` succeeds); otherwise fall back to Node.js. Callers can force either runtime via `--runtime bun|node`.
 - **Schema-Aware CLI**: Leverage `createServerProxy` to map positional/flag arguments to MCP tool schemas, including defaults and required validation.
 - **Unix-Friendly Output**: Provide `--output text|json|markdown|raw` flags so results can be piped; default to human-readable text. Include `--timeout` (default 30s) to cap call duration.
 - **Shell Completion (optional)**: Generate completion scripts for bash/zsh/fish if requested.
@@ -42,7 +42,7 @@ Create an `mcporter generate-cli` command that produces a standalone CLI for a s
    - Add integration tests that run the generated script against a mock MCP server.
 7. **Docs/Examples**
    - Document usage in README.
-   - Provide an example generated CLI under `examples/generated/<server>-cli.ts`. (e.g., `examples/generated/context7-cli.ts`).
+   - Provide an example generated CLI under `examples/generated/<server>.ts` (if we keep an examples directory).
 
 ## Notes
 - Generated CLI depends on the latest `commander` for argument parsing.
@@ -53,27 +53,18 @@ Create an `mcporter generate-cli` command that produces a standalone CLI for a s
 ## Usage Examples
 
 ```bash
-# Inline definition, emit TypeScript + minified bundle
+# Inline definition, emit TypeScript + optional minified bundle
 npx mcporter generate-cli \
-  --server '{
-    "name":"context7",
-    "command":"https://mcp.context7.com/mcp",
-    "headers":{"Authorization":"Bearer ${CONTEXT7_API_KEY}"}
-  }' \
-  --output generated/context7-cli.ts \
+  --server '{"name":"context7","command":"https://mcp.context7.com/mcp"}' \
   --minify
 
 # Bun-friendly binary using --compile (requires Bun installed)
 npx mcporter generate-cli \
   --server '{"name":"context7","command":"https://mcp.context7.com/mcp"}' \
-  --output dist/context7.ts \
   --runtime bun \
   --compile
 
-chmod +x dist/context7
-CONTEXT7_API_KEY=sk-... ./dist/context7 list-tools
-
-- `--minify` shrinks the bundled output via esbuild.
+- `--minify` shrinks the bundled output via esbuild (output defaults to `<server>.js`).
 - `--compile [path]` implies bundling and invokes `bun build --compile` to create the native executable (Bun only). When you omit the path, the compiled binary inherits the server name.
 ```
 

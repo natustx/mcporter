@@ -45,7 +45,10 @@ interface GeneratedOption {
 export async function generateCli(
 	options: GenerateCliOptions,
 ): Promise<{ outputPath: string; bundlePath?: string; compilePath?: string }> {
-	const runtimeKind = options.runtime ?? "node";
+	const runtimeKind = await resolveRuntimeKind(
+		options.runtime,
+		options.compile,
+	);
 	const timeoutMs = options.timeoutMs ?? 30_000;
 	const { definition, name } = await resolveServerDefinition(
 		options.serverRef,
@@ -477,8 +480,8 @@ interface TemplateInput {
 }
 
 async function writeTemplate(input: TemplateInput): Promise<string> {
-	const output =
-		input.outputPath ?? path.join("generated", `${input.serverName}-cli.ts`);
+	const defaultName = `${input.serverName}.ts`;
+	const output = input.outputPath ?? defaultName;
 	await fs.mkdir(path.dirname(output), { recursive: true });
 	await fs.writeFile(output, renderTemplate(input), "utf8");
 	return output;
@@ -744,26 +747,7 @@ async function compileBundleWithBun(
 	bundlePath: string,
 	outputPath: string,
 ): Promise<void> {
-	const bunBin = process.env.BUN_BIN ?? "bun";
-	await new Promise<void>((resolve, reject) => {
-		execFile(
-			bunBin,
-			["--version"],
-			{ cwd: process.cwd(), env: process.env },
-			(error) => {
-				if (error) {
-					reject(
-						new Error(
-							"Unable to locate Bun runtime. Install Bun or set BUN_BIN to the bun executable.",
-						),
-					);
-					return;
-				}
-				resolve();
-			},
-		);
-	});
-
+	const bunBin = await verifyBunAvailable();
 	await new Promise<void>((resolve, reject) => {
 		execFile(
 			bunBin,
@@ -827,4 +811,52 @@ function computeCompileTarget(
 	}
 	const parsed = path.parse(bundlePath);
 	return path.join(parsed.dir, parsed.name);
+}
+
+async function resolveRuntimeKind(
+	runtimeOption: GenerateCliOptions["runtime"],
+	compileOption: GenerateCliOptions["compile"],
+): Promise<"node" | "bun"> {
+	if (runtimeOption) {
+		return runtimeOption;
+	}
+	const bunAvailable = await isBunAvailable();
+	if (compileOption && !bunAvailable) {
+		throw new Error(
+			"--compile requires Bun. Install Bun or set BUN_BIN to the bun executable.",
+		);
+	}
+	return bunAvailable ? "bun" : "node";
+}
+
+async function isBunAvailable(): Promise<boolean> {
+	try {
+		await verifyBunAvailable();
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function verifyBunAvailable(): Promise<string> {
+	const bunBin = process.env.BUN_BIN ?? "bun";
+	await new Promise<void>((resolve, reject) => {
+		execFile(
+			bunBin,
+			["--version"],
+			{ cwd: process.cwd(), env: process.env },
+			(error) => {
+				if (error) {
+					reject(
+						new Error(
+							"Unable to locate Bun runtime. Install Bun or set BUN_BIN to the bun executable.",
+						),
+					);
+					return;
+				}
+				resolve();
+			},
+		);
+	});
+	return bunBin;
 }
