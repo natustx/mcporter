@@ -62,6 +62,7 @@ const result = await callOnce({
 ```
 npx mcporter list                          # list all configured servers (non-blocking auth detection)
 npx mcporter list vercel --schema          # show tool signatures + schemas
+npx mcporter auth vercel --reset           # clear cached tokens, then walk through OAuth
 npx mcporter auth vercel                   # pre-authorize OAuth flows without listing tools
 npx mcporter call linear.searchIssues owner=ENG status=InProgress
 npx mcporter call signoz.query --tail-log  # print the tail of returned log files
@@ -69,6 +70,7 @@ npx mcporter call signoz.query --tail-log  # print the tail of returned log file
 # Local scripts for workspace automation
 pnpm mcporter:list                                 # alias for mcporter list
 pnpm mcporter:call chrome-devtools.getTabs --tail-log
+pnpm mcporter:auth vercel --reset                  # same as mcporter auth --reset
 pnpm mcporter:auth vercel                          # same as mcporter auth
 ```
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { generateCli } from "./generate-cli.js";
 import { createRuntime } from "./runtime.js";
@@ -712,9 +713,27 @@ async function handleAuth(
 	runtime: Awaited<ReturnType<typeof createRuntime>>,
 	args: string[],
 ): Promise<void> {
+	// Peel off optional flags before we consume positional args.
+	const resetIndex = args.indexOf("--reset");
+	const shouldReset = resetIndex !== -1;
+	if (shouldReset) {
+		args.splice(resetIndex, 1);
+	}
 	const target = args.shift();
 	if (!target) {
 		throw new Error("Usage: mcporter auth <server>");
+	}
+
+	const definition = runtime.getDefinition(target);
+	if (shouldReset) {
+		const tokenDir = definition.tokenCacheDir;
+		if (tokenDir) {
+			// Drop the cached credentials so the next auth run starts cleanly.
+			await fsPromises.rm(tokenDir, { recursive: true, force: true });
+			logInfo(`Cleared cached credentials for '${target}' at ${tokenDir}`);
+		} else {
+			logWarn(`Server '${target}' does not expose a token cache path.`);
+		}
 	}
 
 	try {
