@@ -1,4 +1,4 @@
-# mcp-runtime
+# mcp-runtime 🔌
 
 A modern TypeScript runtime and CLI for the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). `mcp-runtime` replaces the Python-based `pnpm mcp:*` helpers with an ergonomic, composable package that works equally well for command-line operators and long-running agents.
 
