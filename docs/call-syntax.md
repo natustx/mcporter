@@ -30,7 +30,7 @@ Key details:
 - Required parameters appear without `?`; optional parameters use `?` and inherit enum literals (e.g. `"json" | "markdown"`).
 - Known format hints are appended inline: `dueDate?: string /* ISO 8601 */` (we suppress the hint when the description already calls it out).
 - When a tool exposes more than two optional parameters (or has ≥4 required parameters), the default output hides the extras and replaces them with an inline summary like `// optional (8): limit, before, after, orderBy, projectId, ...`.
-- Run `mcporter list <server> --include-optional` whenever you want the full signature; the footer repeats `Optional parameters hidden; run with --include-optional to view all fields.` any time truncation occurs.
+- Run `mcporter list <server> --all-parameters` whenever you want the full signature; the footer repeats `Optional parameters hidden; run with --all-parameters to view all fields.` any time truncation occurs.
 - Return types come from each tool’s output schema, so you’ll see concrete names when providers include `title` metadata (e.g. `DocumentConnection`). When no schema is advertised we omit the `: Type` suffix entirely instead of showing `unknown`.
 - Each server concludes with a short `Examples:` block that mirrors the preferred function-call syntax.
 
@@ -45,5 +45,5 @@ Key details:
 
 - Use `--args '{ "issueId": "LNR-123" }'` if you already have JSON payloads—nothing changed for that workflow.
 - The new syntax respects all existing features (timeouts, `--output`, auto-correction).
-- Required fields show by default; pass `--include-optional` when you want the full parameter list (or `--schema` for raw JSON schemas).
+- Required fields show by default; pass `--all-parameters` when you want the full parameter list (or `--schema` for raw JSON schemas).
 - When in doubt, run `mcporter list <server>` to see the current signature and sample invocation.

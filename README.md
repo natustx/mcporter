@@ -20,7 +20,7 @@ mcporter auto-discovers the MCP servers you already configured in Cursor, Claude
 ```bash
 npx mcporter list
 npx mcporter list context7 --schema
-npx mcporter list https://mcp.linear.app/mcp --include-optional
+npx mcporter list https://mcp.linear.app/mcp --all-parameters
 npx mcporter list --stdio "bun run ./local-server.ts" --env TOKEN=xyz
 ```
 
@@ -50,7 +50,7 @@ linear - Hosted Linear MCP; exposes issue search, create, and workflow tooling.
   // optional (11): limit, before, after, orderBy, initiativeId, ...
 ```
 
-Required parameters always show; optional parameters stay hidden unless (a) there are only one or two of them alongside fewer than four required fields or (b) you pass `--include-optional`. Whenever mcporter hides parameters it prints `Optional parameters hidden; run with --include-optional to view all fields.` so you know how to reveal the full signature. Return types are inferred from the tool schema’s `title`, falling back to omitting the suffix entirely instead of guessing.
+Required parameters always show; optional parameters stay hidden unless (a) there are only one or two of them alongside fewer than four required fields or (b) you pass `--all-parameters`. Whenever mcporter hides parameters it prints `Optional parameters hidden; run with --all-parameters to view all fields.` so you know how to reveal the full signature. Return types are inferred from the tool schema’s `title`, falling back to omitting the suffix entirely instead of guessing.
 
 ### Context7: fetch docs (no auth required)
 
@@ -83,6 +83,7 @@ Helpful flags:
 - `--log-level <debug|info|warn|error>` -- adjust verbosity (respects `MCPORTER_LOG_LEVEL`).
 - `--tail-log` -- stream the last 20 lines of any log files referenced by the tool response.
 - `--output <format>` or `--raw` -- control formatted output (defaults to pretty-printed auto detection).
+- `--all-parameters` -- show every schema field when listing a server (default output shows at least five parameters plus a summary of the rest).
 - `--http-url <https://…>` / `--stdio "command …"` -- describe an ad-hoc MCP server inline (pair with `--env KEY=value`, `--cwd`, `--name`, and `--persist <config.json>` as needed).
 - For OAuth-protected servers such as `vercel`, run `npx mcporter auth vercel` once to complete login.
 
@@ -92,7 +93,7 @@ Timeouts default to 30 s; override with `MCPORTER_LIST_TIMEOUT` or `MCPORTER_CAL
 
 - **Function-call syntax.** Instead of juggling `--flag value`, you can call tools as `mcporter call 'linear.create_issue(title: "Bug", team: "ENG")'`. The parser supports nested objects/arrays and surfaces schema validation errors clearly. Deep dive in [docs/call-syntax.md](docs/call-syntax.md).
 - **Auto-correct.** If you typo a tool name, mcporter inspects the server’s tool catalog, retries when the edit distance is tiny, and otherwise prints a `Did you mean …?` hint. The heuristic (and how to tune it) is captured in [docs/call-heuristic.md](docs/call-heuristic.md).
-- **Richer single-server output.** `mcporter list <server>` now prints TypeScript-style signatures, inline comments, return-shape hints, and command examples that mirror the new call syntax. Optional parameters stay hidden by default—add `--include-optional` or `--schema` whenever you need the full JSON schema.
+- **Richer single-server output.** `mcporter list <server>` now prints TypeScript-style signatures, inline comments, return-shape hints, and command examples that mirror the new call syntax. Optional parameters stay hidden by default—add `--all-parameters` or `--schema` whenever you need the full JSON schema.
 
 
 ## Installation

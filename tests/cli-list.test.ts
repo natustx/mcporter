@@ -70,17 +70,9 @@ describe('CLI list timeout handling', () => {
     expect(args).toEqual(['server']);
   });
 
-  it('parses --required-only flag and removes it from args', async () => {
+  it('parses --all-parameters flag and removes it from args', async () => {
     const { extractListFlags } = await cliModulePromise;
-    const args = ['--required-only', '--schema', 'server'];
-    const flags = extractListFlags(args);
-    expect(flags).toEqual({ schema: true, timeoutMs: undefined, requiredOnly: true, ephemeral: undefined });
-    expect(args).toEqual(['server']);
-  });
-
-  it('parses --include-optional flag and removes it from args', async () => {
-    const { extractListFlags } = await cliModulePromise;
-    const args = ['--include-optional', 'server'];
+    const args = ['--all-parameters', 'server'];
     const flags = extractListFlags(args);
     expect(flags).toEqual({ schema: false, timeoutMs: undefined, requiredOnly: false, ephemeral: undefined });
     expect(args).toEqual(['server']);
@@ -246,11 +238,15 @@ describe('CLI list classification', () => {
 
     const headerLine = lines.find((line) => line.trim().startsWith('calculator -'));
     expect(headerLine).toBeDefined();
-    const detailLine = lines[lines.indexOf(headerLine as string) + 1] ?? '';
-    expect(detailLine).toMatch(/1 tool/);
-    expect(detailLine).toMatch(/ms/);
-    expect(detailLine).toContain('HTTP https://example.com/mcp');
+    const summaryLine = lines.find((line) => line.includes('HTTP https://example.com/mcp'));
+    expect(summaryLine).toBeDefined();
+    expect(summaryLine).toMatch(/1 tool/);
+    expect(summaryLine).toMatch(/ms/);
+    expect(summaryLine).toContain('HTTP https://example.com/mcp');
     expect(lines.some((line) => line.includes('/**'))).toBe(true);
+    const paramLineIndex = lines.findIndex((line) => line.includes('@param a'));
+    expect(paramLineIndex).toBeGreaterThan(1);
+    expect(lines[paramLineIndex - 1]?.trim()).toBe('*');
     expect(lines.some((line) => line.includes('@param a') && line.includes('First operand'))).toBe(true);
     expect(lines.some((line) => line.includes('function add('))).toBe(true);
     expect(lines.some((line) => line.includes('format?: "json" | "markdown"'))).toBe(true);
@@ -259,7 +255,7 @@ describe('CLI list classification', () => {
     expect(lines.some((line) => line.includes('Examples:'))).toBe(true);
     expect(lines.some((line) => line.includes('mcporter call calculator.add(a: 1'))).toBe(true);
     expect(
-      lines.some((line) => line.includes('Optional parameters hidden; run with --include-optional to view all fields'))
+      lines.some((line) => line.includes('Optional parameters hidden; run with --all-parameters to view all fields'))
     ).toBe(false);
     expect(listToolsSpy).toHaveBeenCalledWith('calculator', { includeSchema: true });
 
@@ -282,18 +278,58 @@ describe('CLI list classification', () => {
 
     const lines = logSpy.mock.calls.map((call) => stripAnsi(call.join(' ')));
     expect(lines.some((line) => line.includes('function list_documents('))).toBe(true);
-    expect(lines.some((line) => line.includes('// optional (8): limit, before, after, orderBy, projectId, ...'))).toBe(
-      true
-    );
     expect(
-      lines.some((line) => line.includes('Optional parameters hidden; run with --include-optional to view all fields'))
+      lines.some((line) => line.includes('// optional (4): projectId, initiativeId, creatorId, includeArchived'))
+    ).toBe(true);
+    expect(
+      lines.some((line) => line.includes('Optional parameters hidden; run with --all-parameters to view all fields'))
     ).toBe(true);
     expect(listToolsSpy).toHaveBeenCalledWith('linear', { includeSchema: true });
 
     logSpy.mockRestore();
   });
 
-  it('includes optional parameters when --include-optional is set', async () => {
+  it('indents multi-line parameter docs beneath the @param label', async () => {
+    const { handleList } = await cliModulePromise;
+    const listToolsSpy = vi.fn((_name: string, options?: { includeSchema?: boolean }) =>
+      Promise.resolve([
+        {
+          name: 'list_projects',
+          description: 'List Vercel projects',
+          inputSchema: options?.includeSchema
+            ? {
+                type: 'object',
+                properties: {
+                  teamId: {
+                    type: 'string',
+                    description: `The team ID to target.\nTeam IDs start with "team_".\n- Read the file .vercel/project.json\n- Use the list_teams tool`,
+                  },
+                },
+                required: ['teamId'],
+              }
+            : undefined,
+        },
+      ])
+    );
+    const runtime = {
+      getDefinition: () => linearDefinition,
+      listTools: listToolsSpy,
+    } as unknown as Awaited<ReturnType<typeof import('../src/runtime.js')['createRuntime']>>;
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await handleList(runtime, ['linear']);
+
+    const lines = logSpy.mock.calls.map((call) => stripAnsi(call.join(' ')));
+    expect(lines.some((line) => line.includes('@param teamId'))).toBe(true);
+    const continuationLine = lines.find((line) => line.includes('Team IDs start with "team_"'));
+    expect(continuationLine).toBeDefined();
+    expect(continuationLine?.includes('*               Team IDs start with "team_"')).toBe(true);
+
+    logSpy.mockRestore();
+  });
+
+  it('includes optional parameters when --all-parameters is set', async () => {
     const { handleList } = await cliModulePromise;
     const listToolsSpy = vi.fn((_name: string, options?: { includeSchema?: boolean }) =>
       Promise.resolve([buildLinearDocumentsTool(options?.includeSchema)])
@@ -305,16 +341,17 @@ describe('CLI list classification', () => {
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await handleList(runtime, ['--include-optional', 'linear']);
+    await handleList(runtime, ['--all-parameters', 'linear']);
 
     const lines = logSpy.mock.calls.map((call) => stripAnsi(call.join(' ')));
 
     const headerLine = lines.find((line) => line.trim().startsWith('linear -'));
     expect(headerLine).toBeDefined();
-    const detailLine = lines[lines.indexOf(headerLine as string) + 1] ?? '';
-    expect(detailLine).toMatch(/1 tool/);
-    expect(detailLine).toMatch(/ms/);
-    expect(detailLine).toContain('HTTP https://example.com/mcp');
+    const summaryLine = lines.find((line) => line.includes('HTTP https://example.com/mcp'));
+    expect(summaryLine).toBeDefined();
+    expect(summaryLine).toMatch(/1 tool/);
+    expect(summaryLine).toMatch(/ms/);
+    expect(summaryLine).toContain('HTTP https://example.com/mcp');
     expect(lines.some((line) => line.includes('/**'))).toBe(true);
     expect(lines.some((line) => line.includes('@param limit?') && line.includes('Maximum number of documents'))).toBe(
       true
@@ -356,6 +393,59 @@ describe('CLI list classification', () => {
     expect(definitions.get('mcp-example-com-mcp')).toBeDefined();
     expect(listTools).toHaveBeenCalledWith('mcp-example-com-mcp', { includeSchema: true });
 
+    logSpy.mockRestore();
+  });
+
+  it('auto-corrects unknown server names when the edit distance is small', async () => {
+    const { handleList } = await cliModulePromise;
+    const definition = linearDefinition;
+    const getDefinition = vi.fn().mockImplementation((name: string) => {
+      if (name === 'linear') {
+        return definition;
+      }
+      throw new Error(`Unknown MCP server '${name}'.`);
+    });
+    const listTools = vi.fn(() => Promise.resolve([]));
+    const runtime = {
+      getDefinition,
+      getDefinitions: () => [definition],
+      listTools,
+    } as unknown as Awaited<ReturnType<typeof import('../src/runtime.js')['createRuntime']>>;
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await handleList(runtime, ['linera']);
+
+    expect(getDefinition).toHaveBeenCalledTimes(2);
+    expect(listTools).toHaveBeenCalledWith('linear', { includeSchema: true });
+    const messages = logSpy.mock.calls.map((call) => stripAnsi(call.join(' ')));
+    expect(messages.some((line) => line.includes('Auto-corrected server name to linear'))).toBe(true);
+
+    logSpy.mockRestore();
+  });
+
+  it('suggests a server name when the typo is large', async () => {
+    const { handleList } = await cliModulePromise;
+    const definition = linearDefinition;
+    const listTools = vi.fn();
+    const runtime = {
+      getDefinition: () => {
+        throw new Error("Unknown MCP server 'zzz'");
+      },
+      getDefinitions: () => [definition],
+      listTools,
+    } as unknown as Awaited<ReturnType<typeof import('../src/runtime.js')['createRuntime']>>;
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await handleList(runtime, ['zzz']);
+
+    const errorLines = errorSpy.mock.calls.map((call) => stripAnsi(call.join(' ')));
+    expect(errorLines.some((line) => line.includes('Did you mean linear?'))).toBe(true);
+    expect(listTools).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
     logSpy.mockRestore();
   });
 });

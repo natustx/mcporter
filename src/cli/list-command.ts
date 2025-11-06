@@ -1,11 +1,14 @@
 import ora from 'ora';
+import type { ServerDefinition } from '../config.js';
 import type { ServerToolInfo } from '../runtime.js';
 import { type EphemeralServerSpec, persistEphemeralServer, resolveEphemeralServer } from './adhoc-server.js';
 import type { GeneratedOption } from './generate/tools.js';
 import { extractOptions } from './generate/tools.js';
+import { buildDocComment, formatOptionalSummary, selectDisplayOptions } from './list-detail-helpers.js';
+import { chooseClosestIdentifier } from './identifier-helpers.js';
 import type { ListSummaryResult, StatusCategory } from './list-format.js';
 import { formatSourceSuffix, renderServerListRow } from './list-format.js';
-import { boldText, cyanText, dimText, extraDimText, supportsSpinner } from './terminal.js';
+import { boldText, cyanText, dimText, extraDimText, supportsSpinner, yellowText } from './terminal.js';
 import { LIST_TIMEOUT_MS, withTimeout } from './timeouts.js';
 
 export function extractListFlags(args: string[]): {
@@ -121,12 +124,7 @@ export function extractListFlags(args: string[]): {
       args.splice(index, 1);
       continue;
     }
-    if (token === '--required-only') {
-      requiredOnly = true;
-      args.splice(index, 1);
-      continue;
-    }
-    if (token === '--include-optional' || token === '--all-parameters') {
+    if (token === '--all-parameters') {
       requiredOnly = false;
       args.splice(index, 1);
       continue;
@@ -226,7 +224,7 @@ export async function handleList(
           const remaining = servers.length - completedCount;
           if (remaining > 0) {
             // Switch the spinner to a count-only message so we avoid re-printing the last server name over and over.
-            spinner.text = `Listing servers… ${completedCount}/${servers.length} · remaining: ${remaining}`;
+            spinner.text = `Listing servers… ${completedCount}/${servers.length}`;
             spinner.start();
           }
         } else {
@@ -267,7 +265,12 @@ export async function handleList(
     return;
   }
 
-  const definition = runtime.getDefinition(target);
+  const resolved = resolveServerDefinition(runtime, target);
+  if (!resolved) {
+    return;
+  }
+  target = resolved.name;
+  const definition = resolved.definition;
   const timeoutMs = flags.timeoutMs ?? LIST_TIMEOUT_MS;
   const sourcePath =
     definition.source?.kind === 'import' || definition.source?.kind === 'local'
@@ -282,9 +285,13 @@ export async function handleList(
     // Always request schemas so we can render CLI-style parameter hints without re-querying per tool.
     const tools = await withTimeout(runtime.listTools(target, { includeSchema: true }), timeoutMs);
     const durationMs = Date.now() - startedAt;
-    printSingleServerHeader(definition, tools.length, durationMs, transportSummary, sourcePath);
+    const summaryLine = printSingleServerHeader(definition, tools.length, durationMs, transportSummary, sourcePath, {
+      printSummaryNow: false,
+    });
     if (tools.length === 0) {
       console.log('  Tools: <none>');
+      console.log(summaryLine);
+      console.log('');
       return;
     }
     const examples: string[] = [];
@@ -305,9 +312,11 @@ export async function handleList(
       console.log('');
     }
     if (flags.requiredOnly && optionalOmitted) {
-      console.log(`  ${extraDimText('Optional parameters hidden; run with --include-optional to view all fields.')}`);
+      console.log(`  ${extraDimText('Optional parameters hidden; run with --all-parameters to view all fields.')}`);
       console.log('');
     }
+    console.log(summaryLine);
+    console.log('');
     return;
   } catch (error) {
     const durationMs = Date.now() - startedAt;
@@ -336,10 +345,15 @@ function printSingleServerHeader(
   toolCount: number | undefined,
   durationMs: number | undefined,
   transportSummary: string,
-  sourcePath: string | undefined
-): void {
-  const description = definition.description ?? '<none>';
-  console.log(`${boldText(definition.name)} - ${extraDimText(description)}`);
+  sourcePath: string | undefined,
+  options?: { printSummaryNow?: boolean }
+): string {
+  const prefix = boldText(definition.name);
+  if (definition.description) {
+    console.log(`${prefix} - ${extraDimText(definition.description)}`);
+  } else {
+    console.log(prefix);
+  }
   const summaryParts: string[] = [];
   summaryParts.push(
     extraDimText(typeof toolCount === 'number' ? `${toolCount} tool${toolCount === 1 ? '' : 's'}` : 'tools unavailable')
@@ -353,8 +367,14 @@ function printSingleServerHeader(
   if (sourcePath) {
     summaryParts.push(sourcePath);
   }
-  console.log(`  ${summaryParts.join(extraDimText(' · '))}`);
-  console.log('');
+  const summaryLine = `  ${summaryParts.join(extraDimText(' · '))}`;
+  if (options?.printSummaryNow === false) {
+    console.log('');
+  } else {
+    console.log(summaryLine);
+    console.log('');
+  }
+  return summaryLine;
 }
 
 function printToolDetail(
@@ -387,62 +407,11 @@ function printToolDetail(
   };
 }
 
-
-function selectDisplayOptions(
-  options: GeneratedOption[],
-  requiredOnly: boolean
-): { displayOptions: GeneratedOption[]; hiddenOptions: GeneratedOption[] } {
-  if (!requiredOnly) {
-    return { displayOptions: options, hiddenOptions: [] };
-  }
-  const requiredCount = options.filter((option) => option.required).length;
-  const optionalCount = options.length - requiredCount;
-  const includeOptional = optionalCount > 0 && optionalCount <= 2 && requiredCount < 4;
-  const displayOptions: GeneratedOption[] = [];
-  const hiddenOptions: GeneratedOption[] = [];
-  for (const option of options) {
-    if (option.required || includeOptional) {
-      displayOptions.push(option);
-    } else {
-      hiddenOptions.push(option);
-    }
-  }
-  return { displayOptions, hiddenOptions };
-}
-
-function buildDocComment(description: string | undefined, options: GeneratedOption[]): string[] | undefined {
-  const descriptionLines = description?.trim().split(/\r?\n/) ?? [];
-  const paramDocs = options.filter((option) => option.description);
-  if (descriptionLines.length === 0 && paramDocs.length === 0) {
-    return undefined;
-  }
-  const lines: string[] = ['/**'];
-  for (const line of descriptionLines) {
-    if (line.trim().length > 0) {
-      lines.push(` * ${line.trimEnd()}`);
-    }
-  }
-  for (const option of paramDocs) {
-    const descriptionLines = option.description?.split(/\r?\n/) ?? [''];
-    descriptionLines.forEach((entry, index) => {
-      const suffix = entry.trimEnd();
-      if (index === 0) {
-        lines.push(` * @param ${option.property}${option.required ? '' : '?'} ${suffix}`);
-        return;
-      }
-      if (suffix.length > 0) {
-        lines.push(` *   ${suffix}`);
-      }
-    });
-  }
-  lines.push(' */');
-  return lines.map((line) => extraDimText(line));
-}
-
 function formatFunctionSignature(name: string, options: GeneratedOption[], outputSchema: unknown): string {
   const paramsText = options.map(formatInlineParameter).join(', ');
   const returnType = inferReturnTypeName(outputSchema);
-  const signature = `${cyanText(`function ${name}`)}(${paramsText})`;
+  const keyword = extraDimText('function');
+  const signature = `${keyword} ${cyanText(name)}(${paramsText})`;
   return returnType ? `${signature}: ${returnType};` : `${signature};`;
 }
 
@@ -450,17 +419,6 @@ function formatInlineParameter(option: GeneratedOption): string {
   const typeAnnotation = formatTypeAnnotation(option);
   const optionalSuffix = option.required ? '' : '?';
   return `${option.property}${optionalSuffix}: ${typeAnnotation}`;
-}
-
-function formatOptionalSummary(hiddenOptions: GeneratedOption[]): string {
-  const maxNames = 5;
-  const names = hiddenOptions.map((option) => option.property);
-  if (names.length === 0) {
-    return '';
-  }
-  const preview = names.slice(0, maxNames).join(', ');
-  const suffix = names.length > maxNames ? ', ...' : '';
-  return extraDimText(`// optional (${names.length}): ${preview}${suffix}`);
 }
 
 function inferReturnTypeName(schema: unknown): string | undefined {
@@ -492,13 +450,6 @@ function inferSchemaDisplayType(descriptor: Record<string, unknown>): string {
     }
   }
   return type ?? 'unknown';
-}
-
-function formatParameterSignature(option: GeneratedOption): string {
-  const typeAnnotation = formatTypeAnnotation(option);
-  const optionalSuffix = option.required ? '' : '?';
-  const commentSuffix = option.description ? `  ${extraDimText(`// ${option.description}`)}` : '';
-  return `${option.property}${optionalSuffix}: ${typeAnnotation}${commentSuffix}`;
 }
 
 function formatTypeAnnotation(option: GeneratedOption): string {
@@ -537,6 +488,41 @@ function formatTypeAnnotation(option: GeneratedOption): string {
     return `${dimmedType} ${dimText(`/* ${option.formatHint} */`)}`;
   }
   return dimmedType;
+}
+
+function resolveServerDefinition(
+  runtime: Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>,
+  name: string
+): { definition: ServerDefinition; name: string } | undefined {
+  try {
+    const definition = runtime.getDefinition(name);
+    return { definition, name };
+  } catch (error) {
+    if (!(error instanceof Error) || !/Unknown MCP server/i.test(error.message)) {
+      throw error;
+    }
+    const suggestion = suggestServerName(runtime, name);
+    if (!suggestion) {
+      console.error(error.message);
+      return undefined;
+    }
+    if (suggestion.kind === 'auto') {
+      console.log(dimText(`[mcporter] Auto-corrected server name to ${suggestion.value} (input: ${name}).`));
+      return resolveServerDefinition(runtime, suggestion.value);
+    }
+    console.error(yellowText(`[mcporter] Did you mean ${suggestion.value}?`));
+    console.error(error.message);
+    return undefined;
+  }
+}
+
+function suggestServerName(
+  runtime: Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>,
+  attempted: string
+) {
+  const definitions = runtime.getDefinitions();
+  const names = definitions.map((entry) => entry.name);
+  return chooseClosestIdentifier(attempted, names);
 }
 
 function formatCallExpressionExample(
