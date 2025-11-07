@@ -104,16 +104,7 @@ program.configureHelp({
 \t},
 });
 program.showSuggestionAfterError(true);
-program.addHelpText('after', () => {
-\tconst sections: string[] = [];
-\tif (generatorTools) {
-\t\tsections.push('\\nTools:\\n' + generatorTools + '\\n');
-\t}
-\tif (generatorInfo) {
-\t\tsections.push('\\n' + generatorInfo + '\\n');
-\t}
-\treturn sections.join('');
-});
+program.addHelpText('beforeAll', () => renderStandaloneHelp());
 
 ${toolBlocks}
 
@@ -141,32 +132,100 @@ program
 \t\tconsole.log(JSON.stringify(payload, null, 2));
 \t});
 
-program.parseAsync(process.argv).catch((error) => {
-\tconsole.error(error instanceof Error ? error.message : error);
-\tprocess.exit(1);
-});
+const FORCE_COLOR = process.env.FORCE_COLOR?.toLowerCase();
+const forceDisableColor = FORCE_COLOR === '0' || FORCE_COLOR === 'false';
+const forceEnableColor = FORCE_COLOR === '1' || FORCE_COLOR === 'true' || FORCE_COLOR === '2' || FORCE_COLOR === '3';
+const hasNoColor = process.env.NO_COLOR !== undefined;
+const stdoutStream = process.stdout as NodeJS.WriteStream | undefined;
+const supportsAnsiColor = !hasNoColor && (forceEnableColor || (!forceDisableColor && Boolean(stdoutStream?.isTTY)));
 
-async function ensureRuntime(globalOptions: { config?: string; server?: string; timeout: number }) {
-\tif (globalOptions.config) {
-\t\tconst runtime = await createRuntime({ configPath: globalOptions.config });
-\t\tconst name = globalOptions.server ?? embeddedName;
-\t\treturn { runtime, serverName: name, usingEmbedded: false };
-\t}
-\tif (globalOptions.server && globalOptions.server !== embeddedName) {
-\t\tthrow new Error('Server override not found in embedded definition. Provide --config pointing to a file that contains the server.');
-\t}
-\tconst definition = normalizeEmbeddedServer(embeddedServer);
-\tconst runtime = await createRuntime({ servers: [definition] });
-\treturn { runtime, serverName: embeddedName, usingEmbedded: true };
+const tint = {
+	bold(text: string): string {
+		return supportsAnsiColor ? '\u001B[1m' + text + '\u001B[0m' : text;
+	},
+	dim(text: string): string {
+		return supportsAnsiColor ? '\u001B[90m' + text + '\u001B[0m' : text;
+	},
+	extraDim(text: string): string {
+		return supportsAnsiColor ? '\u001B[38;5;244m' + text + '\u001B[0m' : text;
+	},
+};
+
+function renderStandaloneHelp(): string {
+	const colorfulTitle = tint.bold(embeddedName) + ' ' + tint.dim('— Standalone CLI for embedded MCP server');
+	const plainTitle = embeddedName + ' — Standalone CLI for embedded MCP server';
+	const title = supportsAnsiColor ? colorfulTitle : plainTitle;
+	const lines = [title, '', 'Usage: ' + embeddedName + ' <command> [options]', ''];
+	lines.push(...formatSection('Core commands', [
+			{
+				name: 'list-tools',
+				summary: 'List embedded tools and descriptions',
+				usage: embeddedName + ' list-tools',
+			},
+			{
+				name: '<tool>',
+				summary: 'Run a tool with key=value arguments (see list-tools for schemas)',
+				usage: embeddedName + ' <tool> key=value',
+			},
+		]));
+	lines.push(...formatSection('Generator utilities', [
+			{
+				name: '__mcporter_inspect',
+				summary: 'Print metadata for mcporter inspect-cli',
+				usage: embeddedName + ' __mcporter_inspect',
+			},
+		]));
+	if (generatorTools) {
+		lines.push(formatEmbeddedTools());
+	}
+	lines.push('', formatGlobalFlags(), '', formatQuickStart());
+	if (generatorInfo) {
+		lines.push('', tint.extraDim(generatorInfo));
+	}
+	return lines.join('\n');
 }
 
-async function invokeWithTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
-\treturn await Promise.race([
-\t\tpromise,
-\t\tnew Promise<T>((_, reject) => {
-\t\t\tsetTimeout(() => reject(new Error('MCP call timed out after ' + timeout + 'ms')), timeout);
-\t\t}),
-\t]);
+function formatSection(title: string, entries: { name: string; summary: string; usage: string }[]): string[] {
+	const header = supportsAnsiColor ? tint.bold(title) : title;
+	const maxName = Math.max(...entries.map((entry) => entry.name.length));
+	const rendered = [header];
+	entries.forEach((entry) => {
+		const padded = entry.name.padEnd(maxName);
+		const name = supportsAnsiColor ? tint.bold(padded) : padded;
+		const summary = supportsAnsiColor ? tint.dim(entry.summary) : entry.summary;
+		rendered.push('  ' + name + '  ' + summary);
+		rendered.push('    ' + tint.extraDim('usage:') + ' ' + entry.usage);
+	});
+	return [...rendered, ''];
+}
+
+function formatEmbeddedTools(): string {
+	const header = supportsAnsiColor ? tint.bold('Embedded tools') : 'Embedded tools';
+	return header + '\n' + generatorTools;
+}
+
+function formatGlobalFlags(): string {
+	const header = supportsAnsiColor ? tint.bold('Global flags') : 'Global flags';
+	const entries = [
+		['-c, --config <path>', 'Load server definition from mcporter.json'],
+		['-s, --server <name>', 'Use a named server from --config when overriding'],
+		['-t, --timeout <ms>', 'Call timeout in milliseconds'],
+		['-o, --output <format>', 'text | markdown | json | raw (default text)'],
+	];
+	const formatted = entries.map(([flag, summary]) => '  ' + flag.padEnd(28) + summary);
+	return [header, ...formatted].join('\n');
+}
+
+function formatQuickStart(): string {
+	const header = supportsAnsiColor ? tint.bold('Quick start') : 'Quick start';
+	const examples = [
+		[embeddedName + ' list-tools', 'preview embedded tools'],
+		[embeddedName + ' <tool> key=value', 'invoke a tool with arguments'],
+		[embeddedName + ' <tool> key=value -o markdown', 'render markdown responses'],
+		[embeddedName + ' <tool> ... -c ./config/mcporter.json', 'reuse a configured server definition'],
+	];
+	const formatted = examples.map(([cmd, note]) => '  ' + cmd + '\n    ' + tint.dim('# ' + note));
+	return [header, ...formatted].join('\n');
 }
 
 function printResult(result: unknown, format: string) {

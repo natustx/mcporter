@@ -11,6 +11,7 @@ _Nothing yet._
 
 ### Code generation
 - Generated binaries now default to the current working directory (using the inferred server name) when `--compile` is provided without a path, and automatically append a numeric suffix when the target already exists.
+- Standalone CLIs inherit the improved help layout (color-aware title, grouped command summaries, embedded tool listings, and quick-start snippets) so generated artifacts read the same way as the main CLI.
 - Improved `generate-cli` so inline stdio commands (e.g., `"npx chrome-devtools-mcp"`) parse correctly even when invoked from empty directories.
 
 ### Code generation
