@@ -1,9 +1,11 @@
 # Release Checklist
 
+> **No-warning policy:** Every command below must finish without warnings (Biome, Oxlint, tsgo, Vitest, npm pack, etc.). Fix issues before continuing; releases cannot ship with outstanding warnings.
+
 1. Update version in package.json and src/runtime.ts.
 2. Run pnpm install to refresh the lockfile if dependencies changed.
-3. pnpm check
-4. pnpm test
+3. pnpm check (zero warnings allowed)
+4. pnpm test (watch for stderr warnings)
 5. pnpm build
 6. pnpm build:bun
 7. tar -C dist-bun -czf dist-bun/mcporter-macos-arm64-v<version>.tar.gz mcporter
