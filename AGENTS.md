@@ -45,5 +45,5 @@
 - **Inspect/Regenerate artifacts**: `npx mcporter inspect-cli dist/thing.js` prints metadata and replay command; `npx mcporter generate-cli --from dist/thing.js` reruns with the latest mcporter.
 
 ## Release Reminders
-- Homebrew/Bun binaries currently cannot read `package.json`, so `mcporter --version` fails after install (`/$bunfs/package.json`). Embed the version in the bundle before the next release or run `mcporter list --help`/`mcporter list <server> --help` as the smoke test.
-- `mcporter list --help` still routes through command inference (treats `--help` as a server). Use `mcporter help list` or add a dummy server arg when documenting global help until the CLI gains a true global handler.
+- Global help automatically short-circuits regardless of command inference. Use `mcporter help list` if you need command-specific detail.
+- Global help automatically short-circuits regardless of command inference. Use `mcporter help list` if you need command-specific detail.
