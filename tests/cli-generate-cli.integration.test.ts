@@ -186,7 +186,7 @@ describe('mcporter CLI integration', () => {
     expect(helpOutput.stdout).toMatch(/Usage: .+ <command> \[options]/);
     expect(helpOutput.stdout).toContain('Context7 integration harness');
     expect(helpOutput.stdout).toContain('ping - Simple health check');
-    expect(helpOutput.stdout).toContain('--echo <echo:string>');
+    expect(helpOutput.stdout).toContain('--echo <echo>');
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   });
 
@@ -236,7 +236,7 @@ describe('mcporter CLI integration', () => {
     expect(helpOutput.stdout).toMatch(/Usage: .+ <command> \[options]/);
     expect(helpOutput.stdout).toContain('Context7 integration harness');
     expect(helpOutput.stdout).toContain('ping - Simple health check');
-    expect(helpOutput.stdout).toContain('--echo <echo:string>');
+    expect(helpOutput.stdout).toContain('--echo <echo>');
 
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   });
@@ -286,7 +286,7 @@ describe('mcporter CLI integration', () => {
     });
     expect(helpOutput.stdout).toMatch(/Usage: .+ <command> \[options]/);
     expect(helpOutput.stdout).toContain('ping - Simple health check');
-    expect(helpOutput.stdout).toContain('--echo <echo:string>');
+    expect(helpOutput.stdout).toContain('--echo <echo>');
 
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   });
@@ -364,7 +364,7 @@ await new Promise((resolve) => {
       });
     });
     expect(stdout).toContain('echo - Return the provided text');
-    expect(stdout).toContain('--text <text>');
+    expect(stdout).toContain('[--raw <json>]');
 
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   });
