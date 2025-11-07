@@ -3,16 +3,23 @@ import type { ServerDefinition } from '../config.js';
 import type { EphemeralServerSpec } from './adhoc-server.js';
 import { extractEphemeralServerFlags } from './ephemeral-flags.js';
 import { prepareEphemeralServerTarget } from './ephemeral-target.js';
-import type { ToolMetadata } from './generate/tools.js';
 import { splitHttpToolSelector } from './http-utils.js';
 import { chooseClosestIdentifier, renderIdentifierResolutionMessages } from './identifier-helpers.js';
-import type { SerializedConnectionIssue } from './json-output.js';
-import { formatErrorMessage, serializeConnectionIssue } from './json-output.js';
-import { buildToolDoc, formatExampleBlock } from './list-detail-helpers.js';
+import { formatExampleBlock } from './list-detail-helpers.js';
 import type { ListSummaryResult, StatusCategory } from './list-format.js';
 import { classifyListError, formatSourceSuffix, renderServerListRow } from './list-format.js';
+import {
+  buildAuthCommandHint,
+  buildJsonListEntry,
+  createEmptyStatusCounts,
+  createUnknownResult,
+  type ListJsonServerEntry,
+  printSingleServerHeader,
+  printToolDetail,
+  summarizeStatusCounts,
+} from './list-output.js';
 import { consumeOutputFormat } from './output-format.js';
-import { boldText, dimText, extraDimText, supportsSpinner, yellowText } from './terminal.js';
+import { dimText, extraDimText, supportsSpinner, yellowText } from './terminal.js';
 import { consumeTimeoutFlag, LIST_TIMEOUT_MS, withTimeout } from './timeouts.js';
 import { loadToolMetadata } from './tool-cache.js';
 import { formatTransportSummary } from './transport-utils.js';
@@ -312,203 +319,6 @@ export async function handleList(
       console.warn(`  Next: run '${advice.authCommand}' to finish authentication.`);
     }
   }
-}
-
-function indent(text: string, pad: string): string {
-  return text
-    .split('\n')
-    .map((line) => pad + line)
-    .join('\n');
-}
-
-interface ToolDetailResult {
-  examples: string[];
-  optionalOmitted: boolean;
-}
-
-function printSingleServerHeader(
-  definition: ReturnType<Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>['getDefinition']>,
-  toolCount: number | undefined,
-  durationMs: number | undefined,
-  transportSummary: string,
-  sourcePath: string | undefined,
-  options?: { printSummaryNow?: boolean }
-): string {
-  const prefix = boldText(definition.name);
-  if (definition.description) {
-    console.log(`${prefix} - ${extraDimText(definition.description)}`);
-  } else {
-    console.log(prefix);
-  }
-  const summaryParts: string[] = [];
-  summaryParts.push(
-    extraDimText(typeof toolCount === 'number' ? `${toolCount} tool${toolCount === 1 ? '' : 's'}` : 'tools unavailable')
-  );
-  if (typeof durationMs === 'number') {
-    summaryParts.push(extraDimText(`${durationMs}ms`));
-  }
-  if (transportSummary) {
-    summaryParts.push(extraDimText(transportSummary));
-  }
-  if (sourcePath) {
-    summaryParts.push(sourcePath);
-  }
-  const summaryLine = `  ${summaryParts.join(extraDimText(' · '))}`;
-  if (options?.printSummaryNow === false) {
-    console.log('');
-  } else {
-    console.log(summaryLine);
-    console.log('');
-  }
-  return summaryLine;
-}
-
-function printToolDetail(
-  serverName: string,
-  metadata: ToolMetadata,
-  includeSchema: boolean,
-  requiredOnly: boolean
-): ToolDetailResult {
-  const doc = buildToolDoc({
-    serverName,
-    toolName: metadata.tool.name,
-    description: metadata.tool.description,
-    outputSchema: metadata.tool.outputSchema,
-    options: metadata.options,
-    requiredOnly,
-    colorize: true,
-  });
-  if (doc.docLines) {
-    for (const line of doc.docLines) {
-      console.log(`  ${line}`);
-    }
-  }
-  console.log(`  ${doc.signature}`);
-  if (doc.optionalSummary && requiredOnly) {
-    console.log(`  ${doc.optionalSummary}`);
-  }
-  if (includeSchema && metadata.tool.inputSchema) {
-    // Schemas can be large — indenting keeps multi-line JSON legible without disrupting surrounding output.
-    console.log(indent(JSON.stringify(metadata.tool.inputSchema, null, 2), '      '));
-  }
-  console.log('');
-  return {
-    examples: doc.examples,
-    optionalOmitted: doc.hiddenOptions.length > 0,
-  };
-}
-
-interface ListJsonServerEntry {
-  name: string;
-  status: StatusCategory;
-  durationMs: number;
-  description?: string;
-  transport?: string;
-  source?: ServerDefinition['source'];
-  tools?: Array<{
-    name: string;
-    description?: string;
-    inputSchema?: unknown;
-    outputSchema?: unknown;
-  }>;
-  issue?: SerializedConnectionIssue;
-  authCommand?: string;
-  error?: string;
-}
-
-function createEmptyStatusCounts(): Record<StatusCategory, number> {
-  return {
-    ok: 0,
-    auth: 0,
-    offline: 0,
-    http: 0,
-    error: 0,
-  };
-}
-
-function summarizeStatusCounts(entries: ListJsonServerEntry[]): Record<StatusCategory, number> {
-  const counts = createEmptyStatusCounts();
-  entries.forEach((entry) => {
-    counts[entry.status] = (counts[entry.status] ?? 0) + 1;
-  });
-  return counts;
-}
-
-function buildJsonListEntry(
-  result: ListSummaryResult,
-  timeoutSeconds: number,
-  options: { includeSchemas: boolean }
-): ListJsonServerEntry {
-  if (result.status === 'ok') {
-    return {
-      name: result.server.name,
-      status: 'ok',
-      durationMs: result.durationMs,
-      description: result.server.description,
-      transport: formatTransportSummary(
-        result.server as ReturnType<
-          Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>['getDefinition']
-        >
-      ),
-      source: result.server.source,
-      tools: result.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: options.includeSchemas ? tool.inputSchema : undefined,
-        outputSchema: options.includeSchemas ? tool.outputSchema : undefined,
-      })),
-    };
-  }
-  const authCommand = buildAuthCommandHint(
-    result.server as ReturnType<Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>['getDefinition']>
-  );
-  const advice = classifyListError(result.error, result.server.name, timeoutSeconds, { authCommand });
-  return {
-    name: result.server.name,
-    status: advice.category,
-    durationMs: result.durationMs,
-    description: result.server.description,
-    transport: formatTransportSummary(
-      result.server as ReturnType<Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>['getDefinition']>
-    ),
-    source: result.server.source,
-    issue: serializeConnectionIssue(advice.issue),
-    authCommand: advice.authCommand,
-    error: formatErrorMessage(result.error),
-  };
-}
-
-function createUnknownResult(server: ServerDefinition): ListSummaryResult {
-  return {
-    status: 'error',
-    server,
-    error: new Error('Unknown server result'),
-    durationMs: 0,
-  };
-}
-
-function buildAuthCommandHint(
-  definition: ReturnType<Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>['getDefinition']>
-): string {
-  if (definition.source?.kind === 'local' && definition.source.path === '<adhoc>') {
-    if (definition.command.kind === 'http') {
-      const url = definition.command.url instanceof URL ? definition.command.url.href : String(definition.command.url);
-      return `mcporter auth ${url}`;
-    }
-    if (definition.command.kind === 'stdio') {
-      const parts = [definition.command.command, ...(definition.command.args ?? [])];
-      const rendered = parts.map(quoteCommandSegment).join(' ').trim();
-      return rendered.length > 0 ? `mcporter auth --stdio ${rendered}` : 'mcporter auth --stdio';
-    }
-  }
-  return `mcporter auth ${definition.name}`;
-}
-
-function quoteCommandSegment(segment: string): string {
-  if (/^[A-Za-z0-9_./:-]+$/.test(segment)) {
-    return segment;
-  }
-  return JSON.stringify(segment);
 }
 
 function resolveServerDefinition(
