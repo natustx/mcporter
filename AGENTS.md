@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+If you are unsure about sth, just google it.
+
 ## Project Structure & Module Organization
 - `src/`: TypeScript source for the runtime and CLI entry points (`cli.ts`, `runtime.ts`, etc.).
 - `tests/`: Vitest suites mirroring runtime behaviors; integration specs live alongside unit tests.
