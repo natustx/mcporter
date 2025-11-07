@@ -31,6 +31,17 @@ describe('command inference', () => {
     expect(result).toEqual({ kind: 'command', command: 'list', args: ['https://mcp.deepwiki.com/sse'] });
   });
 
+  it('routes scheme-less HTTP URLs to list for ad-hoc mode', () => {
+    const result = inferCommandRouting('shadcn.io/api/mcp', [], definitions);
+    expect(result).toEqual({ kind: 'command', command: 'list', args: ['shadcn.io/api/mcp'] });
+  });
+
+  it('routes HTTP tool selectors directly to call', () => {
+    const token = 'https://api.example.com/mcp.getStatus';
+    const result = inferCommandRouting(token, ['limit=1'], definitions);
+    expect(result).toEqual({ kind: 'command', command: 'call', args: [token, 'limit=1'] });
+  });
+
   it('suggests names when edit distance is large', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const result = inferCommandRouting('unknown', [], definitions);

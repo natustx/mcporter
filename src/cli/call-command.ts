@@ -5,6 +5,7 @@ import { parseCallExpressionFragment } from './call-expression-parser.js';
 import { extractEphemeralServerFlags } from './ephemeral-flags.js';
 import { CliUsageError } from './errors.js';
 import { extractOptions } from './generate/tools.js';
+import { looksLikeHttpUrl, normalizeHttpUrlCandidate, splitHttpToolSelector } from './http-utils.js';
 import { chooseClosestIdentifier, normalizeIdentifier } from './identifier-helpers.js';
 import { type OutputFormat, printCallOutput, tailLogIfRequested } from './output-utils.js';
 import { dumpActiveHandles } from './runtime-debug.js';
@@ -114,15 +115,28 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
     index += 1;
   }
 
+  let callExpressionProvidedServer = false;
+  let callExpressionProvidedTool = false;
+
   if (positional.length > 0) {
-    let callExpression: ReturnType<typeof parseCallExpressionFragment>;
+    const rawToken = positional[0] ?? '';
+    let callExpression: ReturnType<typeof parseCallExpressionFragment> | null = null;
     try {
-      callExpression = parseCallExpressionFragment(positional[0] ?? '');
+      callExpression = extractHttpCallExpression(rawToken);
     } catch (error) {
       throw buildCallExpressionUsageError(error);
     }
+    if (!callExpression) {
+      try {
+        callExpression = parseCallExpressionFragment(rawToken);
+      } catch (error) {
+        throw buildCallExpressionUsageError(error);
+      }
+    }
     if (callExpression) {
       positional.shift();
+      callExpressionProvidedServer = Boolean(callExpression.server);
+      callExpressionProvidedTool = Boolean(callExpression.tool);
       if (callExpression.server) {
         if (result.server && result.server !== callExpression.server) {
           throw new Error(
@@ -144,15 +158,16 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
     }
   }
 
-  if (!result.selector && positional.length > 0) {
+  if (!result.selector && positional.length > 0 && !callExpressionProvidedServer && !result.server) {
     result.selector = positional.shift();
   }
 
   const nextPositional = positional[0];
-  if (!result.tool && nextPositional !== undefined && !nextPositional.includes('=')) {
+  if (!result.tool && nextPositional !== undefined && !nextPositional.includes('=') && !callExpressionProvidedTool) {
     result.tool = positional.shift();
   }
 
+  const trailingPositional: unknown[] = [];
   for (let index = 0; index < positional.length; ) {
     const token = positional[index];
     if (!token) {
@@ -161,7 +176,9 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
     }
     const parsed = parseKeyValueToken(token, positional[index + 1]);
     if (!parsed) {
-      throw new Error(`Argument '${token}' must be key=value or key:value format.`);
+      trailingPositional.push(coerceValue(token));
+      index += 1;
+      continue;
     }
     index += parsed.consumed;
     const value = coerceValue(parsed.rawValue);
@@ -180,6 +197,9 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
       continue;
     }
     result.args[parsed.key] = value;
+  }
+  if (trailingPositional.length > 0) {
+    result.positionalArgs = [...(result.positionalArgs ?? []), ...trailingPositional];
   }
   return result;
 }
@@ -223,21 +243,27 @@ export async function handleCall(
 ): Promise<void> {
   const parsed = parseCallArguments(args);
   let ephemeralSpec = parsed.ephemeral;
-  if (parsed.server && looksLikeHttpUrl(parsed.server)) {
-    if (!ephemeralSpec) {
-      ephemeralSpec = { httpUrl: parsed.server };
-    } else if (!ephemeralSpec.httpUrl) {
-      ephemeralSpec = { ...ephemeralSpec, httpUrl: parsed.server };
+  if (parsed.server) {
+    const normalizedServerUrl = normalizeHttpUrlCandidate(parsed.server);
+    if (normalizedServerUrl) {
+      if (!ephemeralSpec) {
+        ephemeralSpec = { httpUrl: normalizedServerUrl };
+      } else if (!ephemeralSpec.httpUrl) {
+        ephemeralSpec = { ...ephemeralSpec, httpUrl: normalizedServerUrl };
+      }
+      parsed.server = undefined;
     }
-    parsed.server = undefined;
   }
-  if (parsed.selector && looksLikeHttpUrl(parsed.selector)) {
-    if (!ephemeralSpec) {
-      ephemeralSpec = { httpUrl: parsed.selector };
-    } else if (!ephemeralSpec.httpUrl) {
-      ephemeralSpec = { ...ephemeralSpec, httpUrl: parsed.selector };
+  if (parsed.selector) {
+    const normalizedSelectorUrl = normalizeHttpUrlCandidate(parsed.selector);
+    if (normalizedSelectorUrl) {
+      if (!ephemeralSpec) {
+        ephemeralSpec = { httpUrl: normalizedSelectorUrl };
+      } else if (!ephemeralSpec.httpUrl) {
+        ephemeralSpec = { ...ephemeralSpec, httpUrl: normalizedSelectorUrl };
+      }
+      parsed.selector = undefined;
     }
-    parsed.selector = undefined;
   }
   if (ephemeralSpec && parsed.server && !looksLikeHttpUrl(parsed.server)) {
     ephemeralSpec = { ...ephemeralSpec, name: ephemeralSpec.name ?? parsed.server };
@@ -265,6 +291,12 @@ export async function handleCall(
   }
 
   let ephemeralResolution: ReturnType<typeof resolveEphemeralServer> | undefined;
+  if (ephemeralSpec?.httpUrl) {
+    const normalizedEphemeralUrl = normalizeHttpUrlCandidate(ephemeralSpec.httpUrl);
+    if (normalizedEphemeralUrl) {
+      ephemeralSpec = { ...ephemeralSpec, httpUrl: normalizedEphemeralUrl };
+    }
+  }
   if (ephemeralSpec) {
     ephemeralResolution = resolveEphemeralServer(ephemeralSpec);
     runtime.registerDefinition(ephemeralResolution.definition, { overwrite: true });
@@ -288,8 +320,31 @@ export async function handleCall(
   dumpActiveHandles('after call (formatted result)');
 }
 
-function looksLikeHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
+function extractHttpCallExpression(raw: string): ReturnType<typeof parseCallExpressionFragment> | null {
+  const trimmed = raw.trim();
+  const openParen = trimmed.indexOf('(');
+  const prefix = openParen === -1 ? trimmed : trimmed.slice(0, openParen);
+  const split = splitHttpToolSelector(prefix);
+  if (!split) {
+    return null;
+  }
+  if (openParen === -1) {
+    return { server: split.baseUrl, tool: split.tool, args: {} };
+  }
+  if (!trimmed.endsWith(')')) {
+    throw new Error('Function-call syntax requires a closing ) character.');
+  }
+  const argsPortion = trimmed.slice(openParen);
+  const parsed = parseCallExpressionFragment(`${split.tool}${argsPortion}`);
+  if (!parsed) {
+    return { server: split.baseUrl, tool: split.tool, args: {} };
+  }
+  return {
+    server: split.baseUrl,
+    tool: split.tool,
+    args: parsed.args,
+    positionalArgs: parsed.positionalArgs,
+  };
 }
 
 function resolveCallTarget(parsed: CallArgsParseResult): { server: string; tool: string } {

@@ -1,4 +1,5 @@
 import type { ServerDefinition } from '../config.js';
+import { looksLikeHttpUrl, splitHttpToolSelector } from './http-utils.js';
 import { chooseClosestIdentifier } from './identifier-helpers.js';
 import { dimText, yellowText } from './terminal.js';
 
@@ -17,6 +18,10 @@ export function inferCommandRouting(
 
   if (isExplicitCommand(token)) {
     return { kind: 'command', command: token, args };
+  }
+
+  if (isHttpToolToken(token)) {
+    return { kind: 'command', command: 'call', args: [token, ...args] };
   }
 
   if (isUrlToken(token)) {
@@ -55,7 +60,7 @@ function isCallLikeToken(token: string): boolean {
   if (!token) {
     return false;
   }
-  if (/^https?:/i.test(token)) {
+  if (looksLikeHttpUrl(token)) {
     return false;
   }
   return CALL_TOKEN_PATTERN.test(token);
@@ -66,5 +71,12 @@ function isExplicitCommand(token: string): boolean {
 }
 
 function isUrlToken(token: string): boolean {
-  return /^https?:\/\//i.test(token);
+  return looksLikeHttpUrl(token);
+}
+
+function isHttpToolToken(token: string): boolean {
+  if (!token) {
+    return false;
+  }
+  return splitHttpToolSelector(token) !== null;
 }

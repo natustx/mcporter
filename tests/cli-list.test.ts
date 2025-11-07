@@ -317,6 +317,50 @@ describe('CLI list classification', () => {
     expect(registerDefinition).not.toHaveBeenCalled();
   });
 
+  it('reuses configured servers when listing by HTTP tool selector', async () => {
+    const { handleList } = await cliModulePromise;
+    const definition: ServerDefinition = {
+      name: 'shadcn',
+      description: 'shadcn/ui registry MCP',
+      command: { kind: 'http', url: new URL('https://shadcn.io/api/mcp') },
+      source: { kind: 'local', path: '/tmp/config.json' },
+    };
+    const registerDefinition = vi.fn();
+    const listTools = vi.fn().mockResolvedValue([{ name: 'getComponents' }]);
+    const runtime = {
+      getDefinitions: () => [definition],
+      registerDefinition,
+      getDefinition: () => definition,
+      listTools,
+    } as unknown as Awaited<ReturnType<typeof import('../src/runtime.js')['createRuntime']>>;
+
+    await handleList(runtime, ['https://www.shadcn.io/api/mcp.getComponents']);
+
+    expect(listTools).toHaveBeenCalledWith('shadcn', expect.anything());
+    expect(registerDefinition).not.toHaveBeenCalled();
+  });
+
+  it('reuses configured servers for scheme-less HTTP tool selectors', async () => {
+    const { handleList } = await cliModulePromise;
+    const definition: ServerDefinition = {
+      name: 'shadcn',
+      description: 'shadcn/ui registry MCP',
+      command: { kind: 'http', url: new URL('https://shadcn.io/api/mcp') },
+      source: { kind: 'local', path: '/tmp/config.json' },
+    };
+    const listTools = vi.fn().mockResolvedValue([{ name: 'getComponents' }]);
+    const runtime = {
+      getDefinitions: () => [definition],
+      registerDefinition: vi.fn(),
+      getDefinition: () => definition,
+      listTools,
+    } as unknown as Awaited<ReturnType<typeof import('../src/runtime.js')['createRuntime']>>;
+
+    await handleList(runtime, ['shadcn.io/api/mcp.getComponents']);
+
+    expect(listTools).toHaveBeenCalledWith('shadcn', expect.anything());
+  });
+
   it('summarizes hidden optional parameters and hints include flag', async () => {
     const { handleList } = await cliModulePromise;
     const listToolsSpy = vi.fn((_name: string, options?: { includeSchema?: boolean }) =>

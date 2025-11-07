@@ -6,7 +6,9 @@ import { type EmitMetadata, renderClientModule, renderTypesModule, type ToolDocE
 import { extractGeneratorFlags } from './generate/flag-parser.js';
 import { readPackageMetadata } from './generate/template.js';
 import type { ToolMetadata } from './generate/tools.js';
+import { extractHttpServerTarget } from './http-utils.js';
 import { buildToolDoc } from './list-detail-helpers.js';
+import { findServerByHttpUrl } from './server-lookup.js';
 import { loadToolMetadata } from './tool-cache.js';
 
 interface EmitTsFlags {
@@ -132,15 +134,27 @@ function parseEmitTsArgs(args: string[]): ParsedEmitTsOptions {
   };
 }
 
-function getServerDefinition(runtime: Runtime, name: string): ServerDefinition {
+function getServerDefinition(runtime: Runtime, selector: string): ServerDefinition {
   try {
-    return runtime.getDefinition(name);
+    return runtime.getDefinition(selector);
   } catch (error) {
+    const resolved = resolveHttpServerName(runtime, selector);
+    if (resolved) {
+      return runtime.getDefinition(resolved);
+    }
     if (error instanceof Error) {
       throw new Error(error.message);
     }
     throw error;
   }
+}
+
+function resolveHttpServerName(runtime: Runtime, selector: string): string | undefined {
+  const target = extractHttpServerTarget(selector);
+  if (!target) {
+    return undefined;
+  }
+  return findServerByHttpUrl(runtime.getDefinitions(), target);
 }
 
 function buildDocEntries(

@@ -3,6 +3,7 @@ import type { ServerDefinition } from '../config.js';
 import { type EphemeralServerSpec, persistEphemeralServer, resolveEphemeralServer } from './adhoc-server.js';
 import { extractEphemeralServerFlags } from './ephemeral-flags.js';
 import type { ToolMetadata } from './generate/tools.js';
+import { normalizeHttpUrlCandidate, splitHttpToolSelector } from './http-utils.js';
 import { chooseClosestIdentifier } from './identifier-helpers.js';
 import { buildToolDoc, formatExampleBlock } from './list-detail-helpers.js';
 import type { ListSummaryResult, StatusCategory } from './list-format.js';
@@ -65,20 +66,36 @@ export async function handleList(
   let target = args.shift();
   let ephemeralResolution: ReturnType<typeof resolveEphemeralServer> | undefined;
 
-  if (target && /^https?:\/\//i.test(target)) {
-    const reused = findServerByHttpUrl(runtime.getDefinitions(), target);
-    if (reused) {
-      target = reused;
-    } else {
-      if (!flags.ephemeral) {
-        flags.ephemeral = { httpUrl: target };
-      } else if (!flags.ephemeral.httpUrl) {
-        flags.ephemeral.httpUrl = target;
-      }
-      target = undefined;
+  if (target) {
+    const split = splitHttpToolSelector(target);
+    if (split) {
+      target = split.baseUrl;
     }
   }
 
+  if (target) {
+    const normalizedTarget = normalizeHttpUrlCandidate(target);
+    if (normalizedTarget) {
+      const reused = findServerByHttpUrl(runtime.getDefinitions(), normalizedTarget);
+      if (reused) {
+        target = reused;
+      } else {
+        if (!flags.ephemeral) {
+          flags.ephemeral = { httpUrl: normalizedTarget };
+        } else if (!flags.ephemeral.httpUrl) {
+          flags.ephemeral.httpUrl = normalizedTarget;
+        }
+        target = undefined;
+      }
+    }
+  }
+
+  if (flags.ephemeral?.httpUrl) {
+    const normalizedEphemeralUrl = normalizeHttpUrlCandidate(flags.ephemeral.httpUrl);
+    if (normalizedEphemeralUrl) {
+      flags.ephemeral.httpUrl = normalizedEphemeralUrl;
+    }
+  }
   if (flags.ephemeral) {
     ephemeralResolution = resolveEphemeralServer(flags.ephemeral);
     runtime.registerDefinition(ephemeralResolution.definition, { overwrite: true });

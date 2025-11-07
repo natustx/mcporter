@@ -77,6 +77,40 @@ describe('CLI call argument parsing', () => {
     expect(parsed.args).toEqual({ issueId: 'ISSUE-123', body: 'Hello', notify: false });
   });
 
+  it('parses HTTP call expressions with named arguments', async () => {
+    const { parseCallArguments } = await cliModulePromise;
+    const parsed = parseCallArguments([
+      'https://www.shadcn.io/api/mcp.getComponent(component: "vortex", hydrate: true)',
+    ]);
+    expect(parsed.server).toBe('https://www.shadcn.io/api/mcp');
+    expect(parsed.tool).toBe('getComponent');
+    expect(parsed.args).toEqual({ component: 'vortex', hydrate: true });
+  });
+
+  it('parses scheme-less HTTP call expressions with named arguments', async () => {
+    const { parseCallArguments } = await cliModulePromise;
+    const parsed = parseCallArguments(['shadcn.io/api/mcp.getComponent(component: "vortex", hydrate: true)']);
+    expect(parsed.server).toBe('https://shadcn.io/api/mcp');
+    expect(parsed.tool).toBe('getComponent');
+    expect(parsed.args).toEqual({ component: 'vortex', hydrate: true });
+  });
+
+  it('splits scheme-less dotted HTTP selectors without parentheses into base URL + tool', async () => {
+    const { parseCallArguments } = await cliModulePromise;
+    const parsed = parseCallArguments(['shadcn.io/api/mcp.getComponents', 'limit=3']);
+    expect(parsed.server).toBe('https://shadcn.io/api/mcp');
+    expect(parsed.tool).toBe('getComponents');
+    expect(parsed.args).toEqual({ limit: 3 });
+  });
+
+  it('treats unlabeled trailing arguments as positional values', async () => {
+    const { parseCallArguments } = await cliModulePromise;
+    const parsed = parseCallArguments(['https://shadcn.io/api/mcp.getComponent', 'vortex']);
+    expect(parsed.server).toBe('https://shadcn.io/api/mcp');
+    expect(parsed.tool).toBe('getComponent');
+    expect(parsed.positionalArgs).toEqual(['vortex']);
+  });
+
   it('parses positional function-call arguments when labels are omitted', async () => {
     const { parseCallArguments } = await cliModulePromise;
     const parsed = parseCallArguments(['context7.resolve-library-id("value", 2)']);
@@ -97,13 +131,6 @@ describe('CLI call argument parsing', () => {
     const { parseCallArguments } = await cliModulePromise;
     expect(() => parseCallArguments(['--server', 'github', 'linear.create_comment(issueId: "123")'])).toThrow(
       "Conflicting server names: 'github' from flags and 'linear' from call expression."
-    );
-  });
-
-  it('throws when trailing tokens lack key=value formatting', async () => {
-    const { parseCallArguments } = await cliModulePromise;
-    expect(() => parseCallArguments(['chrome-devtools', 'list_pages', 'oops'])).toThrow(
-      "Argument 'oops' must be key=value or key:value format."
     );
   });
 
@@ -278,6 +305,86 @@ describe('CLI call argument parsing', () => {
     await handleCall(runtime, ['--server', 'https://mcp.vercel.com', '--tool', 'list_projects']);
 
     expect(callTool).toHaveBeenCalledWith('vercel', 'list_projects', { args: {} });
+    expect(registerDefinition).not.toHaveBeenCalled();
+  });
+
+  it('reuses HTTP servers when the tool name is appended to the URL', async () => {
+    const { handleCall } = await cliModulePromise;
+    const definition: ServerDefinition = {
+      name: 'shadcn',
+      command: { kind: 'http', url: new URL('https://www.shadcn.io/api/mcp') },
+      source: { kind: 'local', path: '/tmp/config.json' },
+    } as ServerDefinition;
+    const registerDefinition = vi.fn();
+    const callTool = vi.fn().mockResolvedValue({ ok: true });
+    const runtime = {
+      getDefinitions: () => [definition],
+      registerDefinition,
+      callTool,
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Awaited<ReturnType<typeof import('../src/runtime.js')['createRuntime']>>;
+
+    await handleCall(runtime, ['https://www.shadcn.io/api/mcp.getComponent', 'component=vortex']);
+
+    expect(callTool).toHaveBeenCalledWith('shadcn', 'getComponent', { args: { component: 'vortex' } });
+    expect(registerDefinition).not.toHaveBeenCalled();
+  });
+
+  it('maps positional values after HTTP selectors using schema order', async () => {
+    const { handleCall } = await cliModulePromise;
+    const definition: ServerDefinition = {
+      name: 'shadcn',
+      command: { kind: 'http', url: new URL('https://www.shadcn.io/api/mcp') },
+      source: { kind: 'local', path: '/tmp/config.json' },
+    } as ServerDefinition;
+    const registerDefinition = vi.fn();
+    const callTool = vi.fn().mockResolvedValue({ ok: true });
+    const listTools = vi.fn().mockResolvedValue([
+      {
+        name: 'getComponent',
+        description: 'Fetch component',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            component: { type: 'string' },
+          },
+          required: ['component'],
+        },
+      },
+    ]);
+    const runtime = {
+      getDefinitions: () => [definition],
+      registerDefinition,
+      callTool,
+      listTools,
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Awaited<ReturnType<typeof import('../src/runtime.js')['createRuntime']>>;
+
+    await handleCall(runtime, ['https://www.shadcn.io/api/mcp.getComponent', 'vortex']);
+
+    expect(callTool).toHaveBeenCalledWith('shadcn', 'getComponent', { args: { component: 'vortex' } });
+    expect(registerDefinition).not.toHaveBeenCalled();
+  });
+
+  it('reuses HTTP servers when the scheme is omitted', async () => {
+    const { handleCall } = await cliModulePromise;
+    const definition: ServerDefinition = {
+      name: 'shadcn',
+      command: { kind: 'http', url: new URL('https://www.shadcn.io/api/mcp') },
+      source: { kind: 'local', path: '/tmp/config.json' },
+    } as ServerDefinition;
+    const registerDefinition = vi.fn();
+    const callTool = vi.fn().mockResolvedValue({ ok: true });
+    const runtime = {
+      getDefinitions: () => [definition],
+      registerDefinition,
+      callTool,
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Awaited<ReturnType<typeof import('../src/runtime.js')['createRuntime']>>;
+
+    await handleCall(runtime, ['shadcn.io/api/mcp.getComponent', 'component=vortex']);
+
+    expect(callTool).toHaveBeenCalledWith('shadcn', 'getComponent', { args: { component: 'vortex' } });
     expect(registerDefinition).not.toHaveBeenCalled();
   });
 

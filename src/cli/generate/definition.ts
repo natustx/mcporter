@@ -4,6 +4,7 @@ import type { CliArtifactMetadata } from '../../cli-metadata.js';
 import { type HttpCommand, loadServerDefinitions, type ServerDefinition, type StdioCommand } from '../../config.js';
 import type { ServerToolInfo } from '../../runtime.js';
 import { createRuntime } from '../../runtime.js';
+import { extractHttpServerTarget, normalizeHttpUrl } from '../http-utils.js';
 
 export interface ResolvedServer {
   definition: ServerDefinition;
@@ -93,11 +94,31 @@ export async function resolveServerDefinition(
     configPath,
     rootDir,
   });
-  const match = definitions.find((def) => def.name === trimmed);
-  if (!match) {
-    throw new Error(`Unknown MCP server '${trimmed}'. Provide a name from config, a JSON file, or inline JSON.`);
+  const matchByName = definitions.find((def) => def.name === trimmed);
+  if (matchByName) {
+    return { definition: matchByName, name: matchByName.name };
   }
-  return { definition: match, name: match.name };
+
+  const httpTarget = extractHttpServerTarget(trimmed);
+  if (httpTarget) {
+    const normalizedTarget = normalizeHttpUrl(httpTarget);
+    if (normalizedTarget) {
+      const matchByUrl = definitions.find((def) => {
+        if (def.command.kind !== 'http') {
+          return false;
+        }
+        const normalizedDefinitionUrl = normalizeHttpUrl(def.command.url);
+        return normalizedDefinitionUrl === normalizedTarget;
+      });
+      if (matchByUrl) {
+        return { definition: matchByUrl, name: matchByUrl.name };
+      }
+    }
+  }
+
+  throw new Error(
+    `Unknown MCP server '${trimmed}'. Provide a name from config, a JSON file, inline JSON, or an HTTP URL that matches a configured server.`
+  );
 }
 
 export async function fetchTools(

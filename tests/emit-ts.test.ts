@@ -12,7 +12,12 @@ function createRuntimeStub(): Runtime {
   return {
     listServers: () => ['integration'],
     getDefinitions: () => [integrationDefinition],
-    getDefinition: () => integrationDefinition,
+    getDefinition: (name: string) => {
+      if (name !== 'integration') {
+        throw new Error(`Server '${name}' not found.`);
+      }
+      return integrationDefinition;
+    },
     registerDefinition: () => {},
     listTools: async () => [listCommentsTool],
     callTool: async () => ({}),
@@ -68,5 +73,23 @@ describe('handleEmitTs', () => {
     const typesSource = await fs.readFile(typesPath, 'utf8');
     expect(clientSource).toContain('createIntegrationClient');
     expect(typesSource).toContain('export interface IntegrationTools');
+  });
+
+  it('resolves HTTP selectors when emitting definitions', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'emit-ts-http-'));
+    const runtime = createRuntimeStub();
+    const typesPath = path.join(tmpDir, 'integration-tools.d.ts');
+    await handleEmitTs(runtime, ['https://www.example.com/mcp.getComponents', '--out', typesPath, '--mode', 'types']);
+    const typesSource = await fs.readFile(typesPath, 'utf8');
+    expect(typesSource).toContain('export interface HttpsWwwExampleComMcpGetComponentsTools');
+  });
+
+  it('accepts scheme-less HTTP selectors when emitting definitions', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'emit-ts-http-scheme-'));
+    const runtime = createRuntimeStub();
+    const typesPath = path.join(tmpDir, 'integration-tools.d.ts');
+    await handleEmitTs(runtime, ['example.com/mcp.getComponents', '--out', typesPath, '--mode', 'types']);
+    const typesSource = await fs.readFile(typesPath, 'utf8');
+    expect(typesSource).toContain('export interface ExampleComMcpGetComponentsTools');
   });
 });
