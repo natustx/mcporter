@@ -10,9 +10,6 @@ _No changes yet._
 - `mcporter config list` now displays only local entries by default, appends a color-aware summary of every imported config (path, counts, sample names), and still lets you pass `--source import`/`--json` for the merged view.
 - `mcporter config get`, `remove`, and `logout` now use the same fuzzy matching/suggestion logic as `mcporter list`/`call`, auto-correcting near-miss names and emitting “Did you mean …?” hints when ambiguity remains.
 
-### Docs
-- Expanded the README and `docs/config.md` with the new `mcporter config` workflow, default-local listing behavior, and fuzzy matching coverage.
-
 ## [0.3.6] - 2025-11-08
 
 ### CLI & runtime
