@@ -101,6 +101,16 @@ async function bundleWithBun({
   // Copy the template into the package tree so Bun sees our node_modules deps even when the
   // CLI runs from an empty working directory.
   await fs.copyFile(sourcePath, stagingEntry);
+  const nodeModulesPath = path.join(packageRoot, 'node_modules');
+  const stagingNodeModules = path.join(stagingDir, 'node_modules');
+  try {
+    const stats = await fs.stat(nodeModulesPath);
+    if (stats.isDirectory()) {
+      await fs.symlink(nodeModulesPath, stagingNodeModules);
+    }
+  } catch {
+    // Ignore if we cannot create the link; Bun will still attempt to resolve via cwd.
+  }
   try {
     const args = ['build', stagingEntry, '--outfile', absTarget, '--target', runtimeKind === 'bun' ? 'bun' : 'node'];
     if (minify) {

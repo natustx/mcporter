@@ -4,6 +4,11 @@
 
 _No changes yet._
 
+## [0.3.5] - 2025-11-08
+
+### Code generation
+- Ensure the Bun bundler resolves `commander`/`mcporter` even when `npx mcporter generate-cli … --compile` runs inside an empty temp directory by symlinking mcporter’s own `node_modules` into the staging workspace before invoking `bun build`. This keeps the “one weird trick” workflow working post-0.3.4 without requiring extra installs.
+
 ## [0.3.4] - 2025-11-08
 
 ### CLI & runtime
