@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [0.3.4] - 2025-11-08
+
 ### CLI & runtime
 - Added a global `--oauth-timeout <ms>` flag (and the matching `MCPORTER_OAUTH_TIMEOUT_MS` override) so long-running OAuth handshakes can be shortened during debugging; the runtime now logs a clear warning and tears down the flow once the limit is reached, ensuring `mcporter list/call/auth` always exit.
 
