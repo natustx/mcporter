@@ -69,19 +69,22 @@ export function printSingleServerHeader(
 }
 
 export function printToolDetail(
-  serverName: string,
+  definition: ReturnType<Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>['getDefinition']>,
   metadata: ToolMetadata,
   includeSchema: boolean,
   requiredOnly: boolean
 ): ToolDetailResult {
+  const exampleOptions = buildExampleOptions(definition);
   const doc = buildToolDoc({
-    serverName,
+    serverName: definition.name,
     toolName: metadata.tool.name,
     description: metadata.tool.description,
     outputSchema: metadata.tool.outputSchema,
     options: metadata.options,
     requiredOnly,
     colorize: true,
+    callSelector: exampleOptions?.selector,
+    wrapExampleExpression: exampleOptions?.wrapExpression,
   });
   if (doc.docLines) {
     for (const line of doc.docLines) {
@@ -100,6 +103,19 @@ export function printToolDetail(
     examples: doc.examples,
     optionalOmitted: doc.hiddenOptions.length > 0,
   };
+}
+
+function buildExampleOptions(
+  definition: ReturnType<Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>['getDefinition']>
+): { selector?: string; wrapExpression?: boolean } | undefined {
+  if (definition.source?.kind !== 'local' || definition.source.path !== '<adhoc>') {
+    return undefined;
+  }
+  if (definition.command.kind === 'http') {
+    const url = definition.command.url instanceof URL ? definition.command.url.href : String(definition.command.url);
+    return { selector: url, wrapExpression: true };
+  }
+  return undefined;
 }
 
 export function createEmptyStatusCounts(): Record<StatusCategory, number> {

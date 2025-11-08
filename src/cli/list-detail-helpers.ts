@@ -37,6 +37,8 @@ export interface ToolDocInput {
   exampleMaxLength?: number;
   flagExtras?: FlagUsageExtra[];
   defaultReturnType?: string;
+  callSelector?: string;
+  wrapExampleExpression?: boolean;
 }
 
 export interface ToolDocModel {
@@ -116,7 +118,8 @@ export function buildToolDoc(input: ToolDocInput): ToolDocModel {
   const callExample = formatCallExpressionExample(
     serverName,
     toolName,
-    displayOptions.length > 0 ? displayOptions : options
+    displayOptions.length > 0 ? displayOptions : options,
+    { callSelector: input.callSelector, wrapExpression: input.wrapExampleExpression }
   );
   const examples = callExample
     ? formatExampleBlock([callExample], { maxExamples: 1, maxLength: exampleMaxLength ?? 80 })

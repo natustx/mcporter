@@ -48,9 +48,35 @@ describe('list output helpers', () => {
       outputSchema: { type: 'number' },
     };
     const metadata = buildToolMetadata(tool);
-    const detail = printToolDetail('demo', metadata, true, true);
+    const detail = printToolDetail(definition as any, metadata, true, true);
     expect(detail.optionalOmitted).toBe(true);
     expect(detail.examples.length).toBeGreaterThan(0);
+    logSpy.mockRestore();
+  });
+
+  it('prints URL-based examples for ad-hoc HTTP servers', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const adhocDefinition: ServerDefinition = {
+      name: 'mcp-sentry-dev-mcp',
+      description: 'Ad-hoc Sentry',
+      command: { kind: 'http', url: new URL('https://mcp.sentry.dev/mcp?agent=1') },
+      source: { kind: 'local', path: '<adhoc>' },
+    };
+    const tool: ServerToolInfo = {
+      name: 'use_sentry',
+      description: 'Proxy to Sentry',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          request: { type: 'string', description: 'Instruction' },
+        },
+        required: ['request'],
+      },
+      outputSchema: { type: 'object' },
+    };
+    const metadata = buildToolMetadata(tool);
+    const detail = printToolDetail(adhocDefinition as any, metadata, false, true);
+    expect(detail.examples[0]).toContain("'https://mcp.sentry.dev/mcp?agent=1.use_sentry(");
     logSpy.mockRestore();
   });
 

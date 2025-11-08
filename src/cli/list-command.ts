@@ -287,7 +287,7 @@ export async function handleList(
     const examples: string[] = [];
     let optionalOmitted = false;
     for (const entry of metadataEntries) {
-      const detail = printToolDetail(target, entry, Boolean(flags.schema), flags.requiredOnly);
+      const detail = printToolDetail(definition, entry, Boolean(flags.schema), flags.requiredOnly);
       examples.push(...detail.examples);
       optionalOmitted ||= detail.optionalOmitted;
     }

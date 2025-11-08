@@ -12,6 +12,18 @@ Two new flag sets let you describe a server on the command line:
 You can also pass a bare URL as the selector (`mcporter list https://mcp.linear.app/mcp`) or embed the URL in a `call` expression (`mcporter call 'https://mcp.example.com/tools.generate({ topic: "release" })'`).
 - Add `--json` to `mcporter list …` when you need a machine-readable summary of status counts and per-server failures, use `--output json`/`--output raw` with `mcporter call` to receive structured `{ server, tool, issue }` envelopes whenever a transport error occurs, and run `mcporter auth … --json` to capture the same envelope if OAuth or transport setup fails.
 
+### Example: HTTP ad-hoc workflow
+
+```bash
+# Inspect the server directly via URL (no config entry needed)
+mcporter list 'https://mcp.sentry.dev/mcp?agent=1'
+
+# Call a tool by repeating the same URL + tool suffix
+mcporter call 'https://mcp.sentry.dev/mcp?agent=1.use_sentry(request: "yo whats up")'
+```
+
+Notice that the second command repeats the URL. Ad-hoc definitions are ephemeral unless you pass `--persist`, so there is no stored server named `mcp-sentry-dev-mcp` yet. Reusing the printed slug only works after you persist the definition (see "Naming & Identity" below) or add the server to your config; otherwise keep passing the URL/stdio selector each time.
+
 ## Transport Detection
 
 - **HTTP(S)**: Providing a URL defaults to the streamable HTTP transport. `https://` works out of the box; `http://` requires `--allow-http` to acknowledge cleartext traffic.
@@ -24,7 +36,9 @@ You can also pass a bare URL as the selector (`mcporter list https://mcp.linear.
 - Otherwise we derive a slug:
   - HTTP: `<host>` plus a sanitized path fragment (e.g. `mcp-linear-app-mcp`).
   - STDIO: executable basename + script (`node-singlestep`).
-- The inferred name is printed so you know what to reuse later. If you don’t persist the definition, run `mcporter auth https://mcp.linear.app/mcp` (or supply `--name linear` so `mcporter auth linear` also works) to finish OAuth with the same settings.
+- Until you persist the definition (via `--persist`, `mcporter config add`, etc.), the slug is **only** used as the cache key for OAuth tokens/log prefs—you still need to supply the ad-hoc descriptor (`--http-url`, `--stdio`, or bare URL) every time you invoke `mcporter list|call|auth`.
+- Once persisted, the slug becomes a normal server name so `mcporter call <slug>.tool` and `mcporter auth <slug>` work just like any other configured entry.
+- If you don’t persist the definition, run `mcporter auth https://mcp.linear.app/mcp` (or supply `--name linear` so `mcporter auth linear` also works) to finish OAuth with the same settings.
 
 This name becomes the cache key for OAuth tokens and log preferences, so repeated ad-hoc calls still benefit from credential reuse.
 

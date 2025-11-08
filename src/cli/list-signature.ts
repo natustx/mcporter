@@ -77,7 +77,8 @@ export function formatFlagLabel(option: GeneratedOption): string {
 export function formatCallExpressionExample(
   serverName: string,
   toolName: string,
-  options: GeneratedOption[]
+  options: GeneratedOption[],
+  extra?: { callSelector?: string; wrapExpression?: boolean }
 ): string | undefined {
   const assignments = options
     .map((option) => ({ option, literal: pickExampleLiteral(option) }))
@@ -89,7 +90,10 @@ export function formatCallExpressionExample(
 
   const args = assignments.join(', ');
   const callSuffix = assignments.length > 0 ? `(${args})` : '()';
-  return `mcporter call ${serverName}.${toolName}${callSuffix}`;
+  const selector = extra?.callSelector ?? serverName;
+  const expression = `${selector}.${toolName}${callSuffix}`;
+  const rendered = extra?.wrapExpression ? quoteShellExpression(expression) : expression;
+  return `mcporter call ${rendered}`;
 }
 
 export function formatExampleBlock(
@@ -132,6 +136,14 @@ function formatInlineParameter(option: GeneratedOption, colorize: boolean): stri
   const typeAnnotation = formatTypeAnnotation(option, colorize);
   const optionalSuffix = option.required ? '' : '?';
   return `${option.property}${optionalSuffix}: ${typeAnnotation}`;
+}
+
+function quoteShellExpression(expression: string): string {
+  if (!expression.includes("'")) {
+    return `'${expression}'`;
+  }
+  const escaped = expression.replace(/(["\\$`])/g, '\\$1');
+  return `"${escaped}"`;
 }
 
 function inferReturnTypeName(schema: unknown): string | undefined {
