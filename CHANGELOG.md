@@ -6,7 +6,7 @@
 - _Nothing yet._
 
 ### CLI
-- _Nothing yet._
+- Ad-hoc STDIO invocations that start with `npx -y <package>` now infer the npm package name (stripping versions and ignoring arguments after `--`) instead of producing slugs like `npx-y`, so repeated `mcporter list|call` runs automatically reuse a readable server key without passing `--name`.
 
 ## [0.5.7] - 2025-11-14
 
