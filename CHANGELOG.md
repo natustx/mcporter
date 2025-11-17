@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Runtime
-- Propagate `--timeout` / `MCPORTER_CALL_TIMEOUT` into MCP tool calls (SDK `timeout`, `resetTimeoutOnProgress`, `maxTotalTimeout`) so long GPT‑5 Pro runs no longer hit the 60s default request timeout.
+- Propagate `--timeout` / `MCPORTER_CALL_TIMEOUT` into MCP tool calls (SDK `timeout`, `resetTimeoutOnProgress`, `maxTotalTimeout`) so long-running requests are no longer capped by the SDK’s 60s default.
 
 ## [0.6.1] - 2025-11-17
 
