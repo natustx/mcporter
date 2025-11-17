@@ -78,10 +78,14 @@ function defaultVscodeConfigPaths(): string[] {
 }
 
 function opencodeConfigPaths(rootDir: string): string[] {
+  const overrideConfig = process.env.OPENCODE_CONFIG;
   const envConfigPath = process.env.OPENAI_WORKDIR;
   const xdg = process.env.XDG_CONFIG_HOME;
   const configHome = xdg ?? path.join(process.env.HOME ?? '', '.config');
   const paths = [
+    overrideConfig ?? '',
+    path.resolve(rootDir, 'opencode.jsonc'),
+    path.resolve(rootDir, 'opencode.json'),
     path.resolve(rootDir, '.openai', 'config.json'),
     envConfigPath ? path.resolve(envConfigPath, '.openai', 'config.json') : '',
     path.join(configHome, 'openai', 'config.json'),
