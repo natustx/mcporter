@@ -399,12 +399,12 @@ Set `MCPORTER_CONFIG=~/.mcporter/mcporter.json` in your shell profile when you w
 CI runs the same trio via GitHub Actions.
 
 ## Related
-- 🟦🟩 CodexBar: keep Codex and Claude usage visible from the menu bar. <https://codexbar.app>.
-- ✂️ Trimmy: clipboard flattener for multi-line shell snippets. <https://trimmy.app>.
-- ✨ MCP spec: <https://github.com/modelcontextprotocol/specification>
-- 🧠 Supabase MCP server for Claude: <https://github.com/supabase-community/supabase-mcp-server>
-- ▲ Vercel MCP server for Claude: <https://github.com/vercel/ai/tree/main/packages/ai-sdk-experimental/mcp>
-- 🔌 `mcp-proxy` for Claude Desktop: <https://github.com/modelcontextprotocol/claude-code-proxy>
+- CodexBar 🟦🟩 keep Codex and Claude usage visible from the menu bar. <https://codexbar.app>.
+- Trimmy ✂️ clipboard flattener for multi-line shell snippets. <https://trimmy.app>.
+- MCP spec ✨ <https://github.com/modelcontextprotocol/specification>
+- Supabase MCP server for Claude 🧠 <https://github.com/supabase-community/supabase-mcp-server>
+- Vercel MCP server for Claude ▲ <https://github.com/vercel/ai/tree/main/packages/ai-sdk-experimental/mcp>
+- `mcp-proxy` for Claude Desktop 🔌 <https://github.com/modelcontextprotocol/claude-code-proxy>
 
 ## Debug Hanging Servers Quickly
 
