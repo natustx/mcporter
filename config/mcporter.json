@@ -84,6 +84,11 @@
         "Authorization": "Bearer ${FIRECRAWL_API_KEY}"
       }
     },
+    "github": {
+      "description": "GitHub MCP server (requires PAT in GITHUB_TOKEN).",
+      "baseUrl": "https://api.githubcopilot.com/mcp/",
+      "bearerTokenEnv": "GITHUB_TOKEN"
+    },
     "signoz": {
       "description": "SigNoz Query MCP server (logs, traces, metrics).",
       "command": "npx",
