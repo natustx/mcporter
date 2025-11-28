@@ -80,9 +80,11 @@ export async function runCli(argv: string[]): Promise<void> {
   const configPath = runtimeOptions.configPath ?? globalFlags['--config'];
   const configResolution = resolveConfigPath(globalFlags['--config'], rootOverride ?? process.cwd());
   const configPathResolved = configPath ?? configResolution.path;
+  // Only pass configPath to runtime options if it was explicitly provided (via --config flag or env var).
+  // If not explicit, let loadConfigLayers handle the default resolution to avoid ENOENT on missing config.
   const runtimeOptionsWithPath = {
     ...runtimeOptions,
-    configPath: runtimeOptions.configPath ?? configPathResolved,
+    configPath: configResolution.explicit ? configPathResolved : runtimeOptions.configPath,
   };
 
   if (command === 'daemon') {
