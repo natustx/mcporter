@@ -3,6 +3,8 @@ node_modules
 dist
 dist-bun
 *.bun-build
+# Release archives
+mcporter-*.tgz*
 *.tgz
 *.sha1
 *.sha256
