@@ -15,9 +15,6 @@ export async function handleDoctorCommand(options: ConfigCliOptions, _args: stri
     if (server.command.kind === 'stdio' && !path.isAbsolute(server.command.cwd)) {
       issues.push(`Server '${server.name}' has a non-absolute working directory.`);
     }
-    if (server.auth === 'oauth' && !server.tokenCacheDir) {
-      issues.push(`Server '${server.name}' enables OAuth but lacks a token cache directory.`);
-    }
   }
   if (issues.length === 0) {
     console.log('Config looks good.');

@@ -25,6 +25,7 @@ import { DaemonClient } from './daemon/client.js';
 import { createKeepAliveRuntime } from './daemon/runtime-wrapper.js';
 import { analyzeConnectionError } from './error-classifier.js';
 import { isKeepAliveServer } from './lifecycle.js';
+import { clearOAuthCaches } from './oauth-persistence.js';
 import { createRuntime, MCPORTER_VERSION } from './runtime.js';
 
 export { parseCallArguments } from './cli/call-arguments.js';
@@ -471,14 +472,8 @@ export async function handleAuth(runtime: Awaited<ReturnType<typeof createRuntim
 
   const definition = runtime.getDefinition(target);
   if (shouldReset) {
-    const tokenDir = definition.tokenCacheDir;
-    if (tokenDir) {
-      // Drop the cached credentials so the next auth run starts cleanly.
-      await fsPromises.rm(tokenDir, { recursive: true, force: true });
-      logInfo(`Cleared cached credentials for '${target}' at ${tokenDir}`);
-    } else {
-      logWarn(`Server '${target}' does not expose a token cache path.`);
-    }
+    await clearOAuthCaches(definition);
+    logInfo(`Cleared cached credentials for '${target}'.`);
   }
 
   // Kick off the interactive OAuth flow without blocking list output. We retry once if the

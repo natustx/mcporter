@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 ### CLI
-- Nothing yet.
+- Centralized OAuth credentials in a shared vault (`~/.mcporter/.credentials.json`) while still honoring per-server `tokenCacheDir` when present; legacy per-server caches are migrated automatically.
+- `mcporter auth --reset` now clears the vault and legacy caches without crashing on corrupted credential files, making re-auth reliable for servers like Gmail.
 
 ## [0.6.6] - 2025-11-28
 ### CLI

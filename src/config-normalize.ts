@@ -1,5 +1,3 @@
-import os from 'node:os';
-import path from 'node:path';
 import type { CommandSpec, RawEntry, ServerDefinition, ServerLoggingOptions, ServerSource } from './config-schema.js';
 import { expandHome } from './env.js';
 import { resolveLifecycle } from './lifecycle.js';
@@ -41,9 +39,6 @@ export function normalizeServerEntry(
     throw new Error(`Server '${name}' is missing a baseUrl/url or command definition in mcporter.json`);
   }
 
-  const resolvedTokenCacheDir =
-    auth === 'oauth' ? (tokenCacheDir ?? path.join(os.homedir(), '.mcporter', name)) : (tokenCacheDir ?? undefined);
-
   const lifecycle = resolveLifecycle(name, raw.lifecycle, command);
   const logging = normalizeLogging(raw.logging);
 
@@ -53,7 +48,7 @@ export function normalizeServerEntry(
     command,
     env,
     auth,
-    tokenCacheDir: resolvedTokenCacheDir,
+    tokenCacheDir,
     clientName,
     oauthRedirectUrl,
     source,

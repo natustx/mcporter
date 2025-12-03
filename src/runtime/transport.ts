@@ -1,6 +1,3 @@
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -14,6 +11,7 @@ import { materializeHeaders } from '../runtime-header-utils.js';
 import { isUnauthorizedError, maybeEnableOAuth } from '../runtime-oauth-support.js';
 import { closeTransportAndWait } from '../runtime-process-utils.js';
 import { connectWithAuth, OAuthTimeoutError } from './oauth.js';
+import { readCachedAccessToken } from '../oauth-persistence.js';
 import { resolveCommandArgument, resolveCommandArguments } from './utils.js';
 
 const STDIO_TRACE_ENABLED = process.env.MCPORTER_STDIO_TRACE === '1';
@@ -21,25 +19,6 @@ const STDIO_TRACE_ENABLED = process.env.MCPORTER_STDIO_TRACE === '1';
 function attachStdioTraceLogging(_transport: StdioClientTransport, _label?: string): void {
   // STDIO instrumentation is handled via sdk-patches side effects. This helper remains
   // so runtime callers can opt-in without sprinkling conditional checks everywhere.
-}
-
-async function loadCachedAccessToken(definition: ServerDefinition): Promise<string | undefined> {
-  const tokenDir = definition.tokenCacheDir ?? path.join(os.homedir(), '.mcporter', definition.name);
-  const tokensPath = path.join(tokenDir, 'tokens.json');
-  try {
-    const buffer = await fs.readFile(tokensPath, 'utf8');
-    const parsed = JSON.parse(buffer);
-    const token = parsed?.access_token;
-    if (typeof token === 'string' && token.trim().length > 0) {
-      return token;
-    }
-    return undefined;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return undefined;
-    }
-    throw error;
-  }
 }
 
 export interface ClientContext {
@@ -67,7 +46,7 @@ export async function createClientContext(
 
   if (options.allowCachedAuth && activeDefinition.auth === 'oauth' && activeDefinition.command.kind === 'http') {
     try {
-      const cached = await loadCachedAccessToken(activeDefinition);
+      const cached = await readCachedAccessToken(activeDefinition, logger);
       if (cached) {
         const existingHeaders = activeDefinition.command.headers ?? {};
         if (!('Authorization' in existingHeaders)) {

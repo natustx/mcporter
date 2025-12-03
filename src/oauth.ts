@@ -1,9 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import fs from 'node:fs/promises';
 import http from 'node:http';
-import os from 'node:os';
-import path from 'node:path';
 import { URL } from 'node:url';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type {
@@ -12,7 +9,8 @@ import type {
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { ServerDefinition } from './config.js';
-import { readJsonFile, writeJsonFile } from './fs-json.js';
+import type { OAuthPersistence } from './oauth-persistence.js';
+import { buildOAuthPersistence } from './oauth-persistence.js';
 
 const CALLBACK_HOST = '127.0.0.1';
 const CALLBACK_PATH = '/callback';
@@ -57,35 +55,24 @@ function openExternal(url: string) {
   }
 }
 
-// ensureDirectory guarantees a directory exists before writing JSON blobs.
-async function ensureDirectory(dir: string) {
-  await fs.mkdir(dir, { recursive: true });
-}
-
-// FileOAuthClientProvider persists OAuth session artifacts to disk and captures callback redirects.
-class FileOAuthClientProvider implements OAuthClientProvider {
-  private readonly tokenPath: string;
-  private readonly clientInfoPath: string;
-  private readonly codeVerifierPath: string;
-  private readonly statePath: string;
+// PersistentOAuthClientProvider persists OAuth session artifacts to disk and captures callback redirects.
+class PersistentOAuthClientProvider implements OAuthClientProvider {
   private readonly metadata: OAuthClientMetadata;
   private readonly logger: OAuthLogger;
+  private readonly persistence: OAuthPersistence;
   private redirectUrlValue: URL;
   private authorizationDeferred: Deferred<string> | null = null;
   private server?: http.Server;
 
   private constructor(
     private readonly definition: ServerDefinition,
-    tokenCacheDir: string,
+    persistence: OAuthPersistence,
     redirectUrl: URL,
     logger: OAuthLogger
   ) {
-    this.tokenPath = path.join(tokenCacheDir, 'tokens.json');
-    this.clientInfoPath = path.join(tokenCacheDir, 'client.json');
-    this.codeVerifierPath = path.join(tokenCacheDir, 'code_verifier.txt');
-    this.statePath = path.join(tokenCacheDir, 'state.txt');
     this.redirectUrlValue = redirectUrl;
     this.logger = logger;
+    this.persistence = persistence;
     this.metadata = {
       client_name: definition.clientName ?? `mcporter (${definition.name})`,
       redirect_uris: [this.redirectUrlValue.toString()],
@@ -100,11 +87,10 @@ class FileOAuthClientProvider implements OAuthClientProvider {
     definition: ServerDefinition,
     logger: OAuthLogger
   ): Promise<{
-    provider: FileOAuthClientProvider;
+    provider: PersistentOAuthClientProvider;
     close: () => Promise<void>;
   }> {
-    const tokenDir = definition.tokenCacheDir ?? path.join(os.homedir(), '.mcporter', definition.name);
-    await ensureDirectory(tokenDir);
+    const persistence = await buildOAuthPersistence(definition, logger);
 
     const server = http.createServer();
     const overrideRedirect = definition.oauthRedirectUrl ? new URL(definition.oauthRedirectUrl) : null;
@@ -134,7 +120,7 @@ class FileOAuthClientProvider implements OAuthClientProvider {
       redirectUrl.pathname = callbackPath;
     }
 
-    const provider = new FileOAuthClientProvider(definition, tokenDir, redirectUrl, logger);
+    const provider = new PersistentOAuthClientProvider(definition, persistence, redirectUrl, logger);
     provider.attachServer(server);
     return {
       provider,
@@ -193,30 +179,30 @@ class FileOAuthClientProvider implements OAuthClientProvider {
   }
 
   async state(): Promise<string> {
-    const existing = await readJsonFile<string>(this.statePath);
+    const existing = await this.persistence.readState();
     if (existing) {
       return existing;
     }
     const state = randomUUID();
-    await writeJsonFile(this.statePath, state);
+    await this.persistence.saveState(state);
     return state;
   }
 
   async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
-    return readJsonFile<OAuthClientInformationMixed>(this.clientInfoPath);
+    return this.persistence.readClientInfo();
   }
 
   async saveClientInformation(clientInformation: OAuthClientInformationMixed): Promise<void> {
-    await writeJsonFile(this.clientInfoPath, clientInformation);
+    await this.persistence.saveClientInfo(clientInformation);
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
-    return readJsonFile<OAuthTokens>(this.tokenPath);
+    return this.persistence.readTokens();
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    await writeJsonFile(this.tokenPath, tokens);
-    this.logger.info(`Saved OAuth tokens for ${this.definition.name} to ${this.tokenPath}`);
+    await this.persistence.saveTokens(tokens);
+    this.logger.info(`Saved OAuth tokens for ${this.definition.name} (${this.persistence.describe()})`);
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
@@ -227,37 +213,20 @@ class FileOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveCodeVerifier(codeVerifier: string): Promise<void> {
-    await fs.writeFile(this.codeVerifierPath, codeVerifier, 'utf8');
+    await this.persistence.saveCodeVerifier(codeVerifier);
   }
 
   async codeVerifier(): Promise<string> {
-    const value = await fs.readFile(this.codeVerifierPath, 'utf8');
+    const value = await this.persistence.readCodeVerifier();
+    if (!value) {
+      throw new Error(`Missing PKCE code verifier for ${this.definition.name}`);
+    }
     return value.trim();
   }
 
   // invalidateCredentials removes cached files to force the next OAuth flow.
   async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier'): Promise<void> {
-    const removals: string[] = [];
-    if (scope === 'all' || scope === 'tokens') {
-      removals.push(this.tokenPath);
-    }
-    if (scope === 'all' || scope === 'client') {
-      removals.push(this.clientInfoPath);
-    }
-    if (scope === 'all' || scope === 'verifier') {
-      removals.push(this.codeVerifierPath);
-    }
-    await Promise.all(
-      removals.map(async (file) => {
-        try {
-          await fs.unlink(file);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-            throw error;
-          }
-        }
-      })
-    );
+    await this.persistence.clear(scope);
   }
 
   // waitForAuthorizationCode resolves once the local callback server captures a redirect.
@@ -295,7 +264,7 @@ export interface OAuthSession {
 
 // createOAuthSession spins up a file-backed OAuth provider and callback server for the target definition.
 export async function createOAuthSession(definition: ServerDefinition, logger: OAuthLogger): Promise<OAuthSession> {
-  const { provider, close } = await FileOAuthClientProvider.create(definition, logger);
+  const { provider, close } = await PersistentOAuthClientProvider.create(definition, logger);
   const waitForAuthorizationCode = () => provider.waitForAuthorizationCode();
   return {
     provider,
