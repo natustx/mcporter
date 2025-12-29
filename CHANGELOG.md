@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-No unreleased changes yet.
+- Nothing yet.
 
 ## [0.7.3] - 2025-12-29
 
