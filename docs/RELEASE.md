@@ -6,6 +6,14 @@
 
 > **No-warning policy:** Every command below must finish without warnings (Biome, Oxlint, tsgo, Vitest, npm pack, etc.). Fix issues before continuing; releases cannot ship with outstanding warnings.
 
+## Definition of “released”
+
+Shipping a release means **all** of:
+- Tag pushed (`v<version>`).
+- npm published (`mcporter@<version>` visible via `npm view mcporter version`).
+- GitHub release published for the tag **with assets + checksums**.
+- Homebrew tap updated (and verified) after assets propagate.
+
 1. Update version in package.json and src/runtime.ts.
 2. Run pnpm install to refresh the lockfile if dependencies changed.
 3. pnpm check (zero warnings allowed; abort immediately on any error)
