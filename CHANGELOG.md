@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 
-- Nothing yet.
+### CLI
+- Preserve default imports when `mcporter config add` writes a config file, instead of forcing `"imports": []`.
 
 ## [0.7.3] - 2025-12-29
 

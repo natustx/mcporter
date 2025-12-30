@@ -20,7 +20,7 @@ export type ConfigLocationSummary = {
 export function cloneConfig(config: RawConfig): RawConfig {
   return {
     mcpServers: config.mcpServers ? { ...config.mcpServers } : {},
-    imports: config.imports ? [...config.imports] : [],
+    imports: config.imports ? [...config.imports] : undefined,
   };
 }
 
@@ -32,7 +32,7 @@ export async function loadOrCreateConfig(loadOptions: LoadConfigOptions): Promis
     if (isErrno(error, 'ENOENT')) {
       const rootDir = loadOptions.rootDir ?? process.cwd();
       const resolved = resolveConfigPath(loadOptions.configPath, rootDir);
-      return { config: { mcpServers: {}, imports: [] }, path: resolved.path };
+      return { config: { mcpServers: {} }, path: resolved.path };
     }
     throw error;
   }
