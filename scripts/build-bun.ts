@@ -70,7 +70,11 @@ async function main(): Promise<void> {
     ? path.resolve(options.output)
     : path.join(distDir, options.target ? `mcporter-${options.target}` : 'mcporter');
 
-  const buildArgs = ['build', path.join(projectRoot, 'src/cli.ts'), '--compile', '--outfile', outputPath];
+  // Use cli-shim.ts as entry point - it sets MCPORTER_VERSION before importing the real CLI
+  const buildArgs = ['build', path.join(projectRoot, 'scripts/cli-shim.ts'), '--compile', '--outfile', outputPath];
+  const packageJsonPath = path.join(projectRoot, 'package.json');
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version?: string };
+  const packageVersion = packageJson.version ?? '0.0.0-dev';
 
   if (options.minify) {
     buildArgs.push('--minify');
@@ -81,6 +85,8 @@ async function main(): Promise<void> {
   if (options.target) {
     buildArgs.push('--target', options.target);
   }
+  // Define the env var AND use no-bundle to prevent bundling package.json
+  buildArgs.push('--define', `process.env.MCPORTER_VERSION="${packageVersion}"`);
 
   console.log(`Building mcporter binary → ${outputPath}`);
   const result = spawnSync('bun', buildArgs, { stdio: 'inherit' });
