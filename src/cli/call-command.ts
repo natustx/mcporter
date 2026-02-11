@@ -1,5 +1,6 @@
 import { analyzeConnectionError, type ConnectionIssue } from '../error-classifier.js';
 import { wrapCallResult } from '../result-utils.js';
+import { coerceArgsWithSchemaOptions } from './call-arg-coercion.js';
 import { type CallArgsParseResult, parseCallArguments } from './call-arguments.js';
 import { prepareEphemeralServerTarget } from './ephemeral-target.js';
 import { looksLikeHttpUrl, normalizeHttpUrlCandidate } from './http-utils.js';
@@ -90,9 +91,10 @@ export async function handleCall(
 
   const timeoutMs = resolveCallTimeout(parsed.timeoutMs);
   const hydratedArgs = await hydratePositionalArguments(runtime, server, tool, parsed.args, parsed.positionalArgs);
+  const coercedArgs = await coerceArgsToSchema(runtime, server, tool, hydratedArgs);
   let invocation: { result: unknown; resolvedTool: string };
   try {
-    invocation = await invokeWithAutoCorrection(runtime, server, tool, hydratedArgs, timeoutMs);
+    invocation = await invokeWithAutoCorrection(runtime, server, tool, coercedArgs, timeoutMs);
   } catch (error) {
     const issue = maybeReportConnectionIssue(server, tool, error);
     if (parsed.output === 'json' || parsed.output === 'raw') {
@@ -266,6 +268,27 @@ async function hydratePositionalArguments(
     hydrated[target.property] = value;
   });
   return hydrated;
+}
+
+async function coerceArgsToSchema(
+  runtime: Awaited<ReturnType<typeof import('../runtime.js')['createRuntime']>>,
+  server: string,
+  tool: string,
+  args: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const tools = await loadToolMetadata(runtime, server, { includeSchema: true }).catch(() => undefined);
+  if (!tools) {
+    return args;
+  }
+  const toolInfo = tools.find((entry) => entry.tool.name === tool);
+  if (!toolInfo || toolInfo.options.length === 0) {
+    return args;
+  }
+  const coerced = coerceArgsWithSchemaOptions(args, toolInfo.options);
+  if (coerced.error) {
+    throw new Error(coerced.error.message);
+  }
+  return coerced.args;
 }
 
 type ToolResolution = IdentifierResolution;

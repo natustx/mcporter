@@ -41,6 +41,55 @@ describe('CLI call execution behavior', () => {
     logSpy.mockRestore();
   });
 
+  it('uses schema types to keep numeric-looking IDs as strings', async () => {
+    const { handleCall } = await cliModulePromise;
+    const { runtime, callTool } = createRuntimeStub({
+      todoist: [
+        {
+          name: 'find_tasks',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectId: { type: 'string' },
+            },
+            required: [],
+          },
+        },
+      ],
+    });
+
+    await handleCall(runtime, ['todoist.find_tasks', 'projectId=2349498025']);
+
+    expect(callTool).toHaveBeenCalledWith(
+      'todoist',
+      'find_tasks',
+      expect.objectContaining({ args: { projectId: '2349498025' } })
+    );
+  });
+
+  it('fails fast when a numeric ID loses precision before string coercion', async () => {
+    const { handleCall } = await cliModulePromise;
+    const { runtime, callTool } = createRuntimeStub({
+      todoist: [
+        {
+          name: 'find_tasks',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectId: { type: 'string' },
+            },
+            required: [],
+          },
+        },
+      ],
+    });
+
+    await expect(
+      handleCall(runtime, ['todoist.find_tasks', `projectId=${Number.MAX_SAFE_INTEGER + 1}`])
+    ).rejects.toThrow("Argument 'projectId' is too large to safely coerce to string.");
+    expect(callTool).not.toHaveBeenCalled();
+  });
+
   it('still requires an explicit tool when multiple are available', async () => {
     const { handleCall } = await cliModulePromise;
     const { runtime, callTool } = createRuntimeStub(
@@ -92,6 +141,44 @@ describe('CLI call execution behavior', () => {
       })
     );
     logSpy.mockRestore();
+  });
+
+  it('coerces comma-delimited array values using schema item types', async () => {
+    const { handleCall } = await cliModulePromise;
+    const { runtime, callTool } = createRuntimeStub({
+      linear: [
+        {
+          name: 'search',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              ids: {
+                type: 'array',
+                items: { type: 'number' },
+              },
+              flags: {
+                type: 'array',
+                items: { type: 'boolean' },
+              },
+            },
+            required: [],
+          },
+        },
+      ],
+    });
+
+    await handleCall(runtime, ['linear.search', 'ids=1,2,3', 'flags=true,false,maybe']);
+
+    expect(callTool).toHaveBeenCalledWith(
+      'linear',
+      'search',
+      expect.objectContaining({
+        args: {
+          ids: [1, 2, 3],
+          flags: [true, false, 'maybe'],
+        },
+      })
+    );
   });
 
   it('aborts long-running tools when the timeout elapses', async () => {
